@@ -1,0 +1,29 @@
+CLINICAL ENCOUNTER SUMMARY - CONFIDENTIAL
+Patient: Marcus Vance
+DOB: 02/03/1971 (Age: 55)
+MRN: 291-772-911
+Date of Encounter: 04/24/2026
+
+CHIEF COMPLAINT:
+Monitoring of Stage IV non-small cell lung cancer (NSCLC).
+
+HISTORY OF PRESENT ILLNESS:
+The patient is a 55-year-old male originally diagnosed with Stage IIIb NSCLC two years ago. At that time, his tumor was found to harbor an EGFR L858R point mutation. He initially responded well to first-line osimertinib. However, a routine restaging scan last month indicated progression in the lung primary, prompting a transition to a second-line chemotherapy regimen (carboplatin + pemetrexed).
+
+PAST MEDICAL HISTORY:
+- Type II Diabetes Mellitus
+- Hyperlipidemia
+- Stage IV NSCLC (EGFR mutated)
+
+REVIEW OF SYSTEMS:
+General: Reports increasing fatigue and a 5 lb weight loss over the last month. 
+Respiratory: Mild shortness of breath upon exertion.
+Neurological: Denies current headaches. Noted some mild dizziness last week which has since resolved. ECOG Performance Status is currently 2.
+
+IMAGING & LABS:
+- Brain MRI (04/20/2026): Reveals two new distinct punctate enhancing lesions in the left frontal lobe and right parietal lobe, measuring 4mm and 6mm respectively, consistent with new asymptomatic brain metastases.
+- Chest CT (04/20/2026): Interval increase in the size of the primary left lower lobe mass.
+
+ASSESSMENT & PLAN:
+55yo male with EGFR-mutated NSCLC, now refractory to osimertinib with evidence of systemic and CNS disease progression. The presence of new brain metastases complicates the therapeutic approach. Proceeding with whole-brain palliative radiation or stereotactic radiosurgery (SRS) is under consideration. 
+Patient is asking about potential clinical trials. Unfortunately, his newly discovered, untreated brain metastases may serve as a strict exclusion criterion for many systemic targeted therapy trials. We will attempt a pre-screening, but alternative standard palliative strategies will be queued.
