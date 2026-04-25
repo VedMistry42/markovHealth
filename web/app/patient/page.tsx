@@ -36,13 +36,21 @@ export default function PatientPage() {
       const res = await fetch("/api/messages")
       if (!res.ok) return
       const data: Message[] = await res.json()
-      if (Array.isArray(data) && data.length > 0) setMessages(data)
+      if (Array.isArray(data) && data.length > 0) {
+        setMessages(prev => {
+          // Auto-switch to messages tab when first message arrives
+          if (prev.length === 0 && data.length > 0) {
+            setActiveTab("messages")
+          }
+          return data
+        })
+      }
     } catch { /* keep existing */ }
   }, [])
 
   useEffect(() => { fetchMessages() }, [fetchMessages])
   useEffect(() => {
-    const id = setInterval(fetchMessages, 3000)
+    const id = setInterval(fetchMessages, 1500)
     return () => clearInterval(id)
   }, [fetchMessages])
 

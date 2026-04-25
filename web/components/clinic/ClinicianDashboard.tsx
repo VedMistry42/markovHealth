@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Activity, Send, Filter, Upload, ChevronDown, ChevronUp,
@@ -93,28 +93,26 @@ export default function ClinicianDashboard() {
   const [sentIds,        setSentIds]        = useState<Set<string>>(new Set())
   const [confirmedIds,   setConfirmedIds]   = useState<Set<string>>(new Set())
 
-  // Poll for patients and confirmations
-  useEffect(() => {
-    async function poll() {
-      try {
-        const [pRes, cRes] = await Promise.all([
-          fetch("/api/clinic/patients"),
-          fetch("/api/clinic/confirmed-patients"),
-        ])
-        if (pRes.ok) {
-          const data = await pRes.json()
-          setPatients(data)
-        }
-        if (cRes.ok) {
-          const data: { patientId: string; status: string }[] = await cRes.json()
-          setConfirmedIds(new Set(data.filter(d => d.status === "CONFIRMED").map(d => d.patientId)))
-        }
-      } catch { /* ignore */ }
-    }
-    const id = setInterval(poll, 3000)
-    poll()
-    return () => clearInterval(id)
+  const fetchPatients = useCallback(async () => {
+    try {
+      const [pRes, cRes] = await Promise.all([
+        fetch("/api/clinic/patients"),
+        fetch("/api/clinic/confirmed-patients"),
+      ])
+      if (pRes.ok) setPatients(await pRes.json())
+      if (cRes.ok) {
+        const data: { patientId: string; status: string }[] = await cRes.json()
+        setConfirmedIds(new Set(data.filter(d => d.status === "CONFIRMED").map(d => d.patientId)))
+      }
+    } catch { /* ignore */ }
   }, [])
+
+  // Poll for patients and confirmations every 2s
+  useEffect(() => {
+    const id = setInterval(fetchPatients, 2000)
+    fetchPatients()
+    return () => clearInterval(id)
+  }, [fetchPatients])
 
   // Upload trial protocol
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -133,24 +131,10 @@ export default function ClinicianDashboard() {
       const data = await res.json()
       if (res.ok && data.trial) {
         setActiveTrial(data.trial)
-      } else {
-        setActiveTrial({
-          id: `t-${Date.now()}`,
-          name: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
-          criteria: "KRAS G12C. Stage IIIB/IV NSCLC. ECOG ≤ 1. No active brain metastases.",
-          indication: "NSCLC", phase: "Phase II",
-          createdAt: new Date().toISOString(),
-        })
+        // Immediately fetch matched patients — don't wait for the poll interval
+        await fetchPatients()
       }
-    } catch {
-      setActiveTrial({
-        id: `t-${Date.now()}`,
-        name: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
-        criteria: "KRAS G12C. Stage IIIB/IV NSCLC. ECOG ≤ 1. No active brain metastases.",
-        indication: "NSCLC", phase: "Phase II",
-        createdAt: new Date().toISOString(),
-      })
-    }
+    } catch { /* show empty state */ }
     setUploading(false)
 
     const logs = [

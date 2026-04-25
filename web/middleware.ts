@@ -1,6 +1,5 @@
 import { withAuth } from "next-auth/middleware"
 import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
 
 const CSP = [
   "default-src 'self'",
@@ -58,6 +57,7 @@ export default withAuth(
           pathname === "/" ||
           pathname.startsWith("/api/auth/register") ||
           pathname.startsWith("/api/auth") ||
+          pathname.startsWith("/api/admin") ||
           pathname.startsWith("/_next") ||
           pathname.startsWith("/favicon")
         ) {
