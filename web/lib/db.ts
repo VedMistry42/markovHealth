@@ -37,6 +37,11 @@ interface MatchRecord {
   confidenceScore: number
   matchedCriteria: string[]
   createdAt: string
+  status: "PENDING" | "CONFIRMED"
+  patientName?: string
+  lat?: number
+  lng?: number
+  condition?: string
 }
 
 interface MedicalRecord {
@@ -52,14 +57,24 @@ const g = globalThis as unknown as {
   _axiomMatches?: Map<string, MatchRecord>
   _axiomMedical?: Map<string, MedicalRecord>
   _axiomTrials?: Map<string, Trial>
+  _axiomLogistics?: Map<string, any>
 }
 
 g._axiomMessages ??= new Map()
 g._axiomMatches ??= new Map()
 g._axiomMedical ??= new Map()
 g._axiomTrials ??= new Map()
+g._axiomLogistics ??= new Map()
 
 export const db = {
+  logistics: {
+    async create(payload: any): Promise<void> {
+      g._axiomLogistics!.set(payload.patientId, { ...payload, createdAt: new Date().toISOString() })
+    },
+    async findMany(): Promise<any[]> {
+      return Array.from(g._axiomLogistics!.values())
+    }
+  },
   message: {
     async create({ data }: { data: Omit<Message, "id" | "createdAt" | "read"> }): Promise<Message> {
       const msg: Message = { ...data, id: randomUUID(), createdAt: new Date().toISOString(), read: false }
@@ -78,12 +93,18 @@ export const db = {
   },
 
   matchResult: {
-    async create({ data }: { data: Omit<MatchRecord, "id" | "createdAt"> }): Promise<MatchRecord> {
-      const record: MatchRecord = { ...data, id: randomUUID(), createdAt: new Date().toISOString() }
+    async create({ data }: { data: Omit<MatchRecord, "id" | "createdAt" | "status"> }): Promise<MatchRecord> {
+      const record: MatchRecord = { ...data, id: randomUUID(), createdAt: new Date().toISOString(), status: "PENDING" }
       g._axiomMatches!.set(record.id, record)
       return record
     },
-    async findMany({ where }: { where: { patientId?: string; trialId?: string } }): Promise<MatchRecord[]> {
+    async confirmMatch(id: string): Promise<void> {
+      const record = Array.from(g._axiomMatches!.values()).find(r => r.id === id || r.patientId === id)
+      if (record) {
+        record.status = "CONFIRMED"
+      }
+    },
+    async findMany({ where }: { where: { patientId?: string; trialId?: string; status?: string } }): Promise<MatchRecord[]> {
       return Array.from(g._axiomMatches!.values()).filter((r) => {
         if (where.patientId && r.patientId !== where.patientId) return false
         if (where.trialId && r.trialId !== where.trialId) return false

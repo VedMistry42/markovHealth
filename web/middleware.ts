@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server"
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://api.mapbox.com",
-  "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.mapbox.com",
+  "connect-src 'self' https://api.mapbox.com https://events.mapbox.com https://*.mapbox.com http://localhost:8000",
   "img-src 'self' data: blob: https://*.mapbox.com",
   "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
@@ -56,6 +56,7 @@ export default withAuth(
         const { pathname } = req.nextUrl
         if (
           pathname === "/" ||
+          pathname === "/api/register" ||
           pathname.startsWith("/api/auth") ||
           pathname.startsWith("/_next") ||
           pathname.startsWith("/favicon")

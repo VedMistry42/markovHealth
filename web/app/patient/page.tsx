@@ -57,28 +57,27 @@ const DEMO_MESSAGES: Message[] = [
 export default function PatientPage() {
   const [uploadState, setUploadState] = useState<UploadState>("idle")
   const [matches, setMatches] = useState<TrialMatch[]>([])
+  const DEFAULT_STORY = "I was diagnosed 8 months ago with Stage IIIB NSCLC. I'm a high school art teacher — I want to keep painting and keep teaching. I'm not ready to stop, and I'm willing to do whatever it takes to find a treatment that works for my specific mutation."
   const [patientName, setPatientName] = useState("Sarah Jenkins")
-  const [patientStory, setPatientStory] = useState(
-    "After my diagnosis last week, I've been overwhelmed but hopeful. I'm actively looking for targeted therapies that can combat my specific mutation without having to move away from my family."
-  )
+  const [patientStory, setPatientStory] = useState(DEFAULT_STORY)
   const [activeTab, setActiveTab] = useState<"clinical" | "messages">("clinical")
   const [messages, setMessages] = useState<Message[]>(DEMO_MESSAGES)
   const [expandedMsg, setExpandedMsg] = useState<string | null>("msg-demo-001")
   const [fileCount, setFileCount] = useState(1)
   const [kitRequested, setKitRequested] = useState<Record<string, boolean>>({})
   const [showUpdateRecords, setShowUpdateRecords] = useState(false)
-  // "on-file" means demo records already loaded; "idle" means no records yet
   const [recordsState, setRecordsState] = useState<"on-file" | "uploading-new" | "done">("on-file")
 
   useEffect(() => {
-    const ctx = localStorage.getItem("userContext")
-    if (ctx) {
-      try {
+    try {
+      const ctx = localStorage.getItem("userContext")
+      if (ctx) {
         const parsed = JSON.parse(ctx)
-        if (parsed.name) setPatientName(parsed.name)
-        if (parsed.story) setPatientStory(parsed.story)
-      } catch { /* ignore */ }
-    }
+        // Only override if the data looks real
+        if (parsed.name && parsed.name.trim().length >= 2) setPatientName(parsed.name)
+        if (parsed.story && parsed.story.trim().length > 10) setPatientStory(parsed.story)
+      }
+    } catch { /* ignore */ }
   }, [])
 
   const fetchMessages = useCallback(async () => {
@@ -86,21 +85,23 @@ export default function PatientPage() {
       const res = await fetch("/api/messages")
       if (!res.ok) return
       const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        setMessages(data)
-      }
-    } catch { /* keep demo messages */ }
+      // API returns either {messages:[]} or [] directly
+      const arr = Array.isArray(data) ? data : Array.isArray(data.messages) ? data.messages : []
+      if (arr.length > 0) setMessages(arr)
+    } catch { /* keep demo messages on network error */ }
   }, [])
 
   useEffect(() => { fetchMessages() }, [fetchMessages])
 
-  async function markRead(id: string) {
-    await fetch("/api/messages", {
+  // markRead is purely local — no network call needed for demo
+  function markRead(id: string) {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, read: true } : m)))
+    // Best-effort server sync — fire and forget, never throws
+    fetch("/api/messages", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
-    })
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, read: true } : m)))
+    }).catch(() => { /* ignore — local state already updated */ })
   }
 
   async function handleUploadComplete(newPatientId: string, deidentifiedSummary: string, numFiles: number) {
@@ -225,8 +226,8 @@ export default function PatientPage() {
           >
             <div className="absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-bl-full opacity-50" />
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center flex-shrink-0 text-xl font-bold text-rose-600">
-                {patientName?.[0] ?? "P"}
+              <div className="w-12 h-12 bg-rose-100 rounded-2xl flex items-center justify-center flex-shrink-0 text-lg font-bold text-rose-600 shadow-sm">
+                {patientName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)}
               </div>
               <div>
                 <p className="text-sm font-semibold text-gray-900 mb-1">
@@ -539,7 +540,16 @@ export default function PatientPage() {
                             )}
 
                             <button
-                              onClick={() => setKitRequested((prev) => ({ ...prev, [msg.id]: true }))}
+                              onClick={async () => {
+                                setKitRequested((prev) => ({ ...prev, [msg.id]: true }))
+                                try {
+                                  await fetch("/api/confirm", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ patientId: msg.patientId })
+                                  })
+                                } catch (e) { /* silent fail */ }
+                              }}
                               disabled={kitRequested[msg.id]}
                               className={`mt-4 w-full py-2.5 text-white text-sm font-semibold rounded-2xl transition-colors flex items-center justify-center gap-2 shadow ${
                                 kitRequested[msg.id]

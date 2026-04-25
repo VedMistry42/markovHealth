@@ -69,8 +69,21 @@ export async function POST(req: NextRequest) {
     meta: { confidenceScore: matchResult.confidenceScore },
   })
 
+  const userCtx = req.headers.get("x-patient-context")
+  let patientName = "Anonymous Patient"
+  try { if (userCtx) patientName = JSON.parse(userCtx).name ?? patientName } catch { /* ignore */ }
+
   await db.matchResult.create({
-    data: { patientId: session.user.id, trialId, confidenceScore: matchResult.confidenceScore, matchedCriteria: matchResult.matchedCriteria },
+    data: {
+      patientId: session.user.id,
+      trialId,
+      confidenceScore: matchResult.confidenceScore,
+      matchedCriteria: matchResult.matchedCriteria,
+      patientName,
+      lat: coords?.lat,
+      lng: coords?.lng,
+      condition: matchResult.matchedCriteria[0],
+    },
   })
 
   // Generate a personalized message and save it when there's a match

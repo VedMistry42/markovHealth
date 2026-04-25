@@ -37,7 +37,7 @@ g._markovUsers ??= new Map()
 // Seed demo accounts
 if (!g._markovUsers.has("patient@demo.com")) {
   g._markovUsers.set("patient@demo.com", {
-    id: "patient-001",
+    id: "arch-1",
     email: "patient@demo.com",
     password: "demo1234",
     role: "patient",

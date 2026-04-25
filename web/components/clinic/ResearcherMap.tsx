@@ -1,7 +1,7 @@
 "use client"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { HUBS, MOCK_PATIENTS, MOBILE_UNITS } from "@/data/mockTrialCriteria"
+import { HUBS, MOBILE_UNITS } from "@/data/mockTrialCriteria"
 import { Truck, Package, Navigation, X } from "lucide-react"
 
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -128,7 +128,7 @@ export default function ResearcherMap() {
   useEffect(() => {
     async function poll() {
       try {
-        const res = await fetch(`${FASTAPI_URL}/route-results`, { cache: "no-store" })
+        const res = await fetch("/api/clinic/logistics", { cache: "no-store" })
         if (!res.ok) return
         const results: RouteResult[] = await res.json()
         for (const r of results) {
@@ -136,21 +136,52 @@ export default function ResearcherMap() {
             seenIds.current.add(r.patientId)
             addLiveRoute(r)
             setToast(r)
-            // Fly the map to the patient's location
             const map = mapRef.current as import("mapbox-gl").Map | null
             if (map) {
               map.flyTo({ center: [r.lng, r.lat], zoom: 7, duration: 1800 })
             }
           }
         }
-      } catch {
-        /* FastAPI not running — silent fail in dev */
-      }
+      } catch { /* silent fail */ }
     }
 
     const id = setInterval(poll, POLL_INTERVAL_MS)
     poll()   // immediate first call
-    return () => clearInterval(id)
+
+    // Also poll for already confirmed patients to show them as static markers
+    async function pollConfirmed() {
+      try {
+        const res = await fetch("/api/clinic/confirmed-patients")
+        if (!res.ok) return
+        const patients = await res.json()
+        const map = mapRef.current as any
+        if (!map) return
+
+        import("mapbox-gl").then((mapboxgl) => {
+          patients.forEach((p: any) => {
+            const sid = `confirmed-marker-${p.patientId}`
+            if (seenIds.current.has(sid)) return
+            seenIds.current.add(sid)
+
+            const el = document.createElement("div")
+            el.innerHTML = `
+              <div class="relative flex h-4 w-4">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400"></span>
+                <span class="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border border-white"></span>
+              </div>
+            `
+            new mapboxgl.default.Marker({ element: el })
+              .setLngLat([p.lng, p.lat])
+              .setPopup(new mapboxgl.default.Popup({ offset: 12 }).setHTML(`<p style="color:#111;font-size:12px;font-weight:700">${p.patientName}</p><p style="color:#555;font-size:11px">${p.condition}</p><p style="color:#10b981;font-size:10px;font-weight:bold">VERIFIED & CONFIRMED</p>`))
+              .addTo(map)
+          })
+        })
+      } catch (e) { /* silent fail */ }
+    }
+    const cid = setInterval(pollConfirmed, POLL_INTERVAL_MS)
+    pollConfirmed()
+
+    return () => { clearInterval(id); clearInterval(cid) }
   }, [addLiveRoute])
 
   // -------------------------------------------------------------------
@@ -199,21 +230,8 @@ export default function ResearcherMap() {
             .addTo(map)
         })
 
-        // Patient markers (soft pulsing avatars)
-        MOCK_PATIENTS.forEach((patient) => {
-          const color = patient.status === "dispatched" ? "#f59e0b" : patient.status === "matched" ? "#10b981" : "#6b7280"
-          const el = document.createElement("div")
-          el.innerHTML = `
-            <div class="relative flex h-4 w-4">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style="background:${color};"></span>
-              <span class="relative inline-flex rounded-full h-4 w-4" style="background:${color}; border: 1.5px solid rgba(255,255,255,0.7);"></span>
-            </div>
-          `
-          new mapboxgl.default.Marker({ element: el })
-            .setLngLat([patient.lng, patient.lat])
-            .setPopup(new mapboxgl.default.Popup({ offset: 12 }).setHTML(`<p style="color:#111;font-size:12px;font-weight:600">${patient.label}</p><p style="color:#555;font-size:11px;text-transform:capitalize">${patient.status}</p>`))
-            .addTo(map)
-        })
+        // Live confirmed patients are loaded via pollConfirmed above
+
 
         // Mobile unit markers
         MOBILE_UNITS.forEach((unit) => {
@@ -231,29 +249,7 @@ export default function ResearcherMap() {
             .addTo(map)
         })
 
-        // Static dispatch routes for mock patients
-        const dispatchedPatients = MOCK_PATIENTS.filter((p) => p.status === "dispatched")
-        dispatchedPatients.forEach((patient, i) => {
-          const nearestHub = HUBS[i % HUBS.length]
-          const routeId = `route-${patient.id}`
-          map.addSource(routeId, {
-            type: "geojson",
-            data: {
-              type: "Feature",
-              properties: {},
-              geometry: {
-                type: "LineString",
-                coordinates: [[nearestHub.lng, nearestHub.lat], [patient.lng, patient.lat]],
-              },
-            },
-          })
-          map.addLayer({
-            id: routeId,
-            type: "line",
-            source: routeId,
-            paint: { "line-color": "#f59e0b", "line-width": 2, "line-dasharray": [2, 2], "line-opacity": 0.7 },
-          })
-        })
+        // Static dispatch routes removed to prioritize live RL routing only
       })
     })
 

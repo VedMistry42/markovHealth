@@ -90,9 +90,12 @@ export default function LandingPage() {
     const result = await signIn("credentials", { email: loginEmail, password: loginPassword, redirect: false })
     setLoading(false)
     if (result?.error) {
-      setError("Invalid email or password.")
+      setError("Invalid email or password. Check your credentials and try again.")
     } else {
-      const isClinic = loginEmail.includes("researcher") || loginEmail.includes("clinic")
+      // Use the demo account email to decide routing; real accounts use session role from next redirect
+      const clinicDomains = ["researcher", "clinic", "hospital", "doctor", "md."]
+      const isClinic = clinicDomains.some(d => loginEmail.toLowerCase().includes(d)) ||
+                       loginEmail === "researcher@demo.com"
       router.push(isClinic ? "/clinic" : "/patient")
     }
   }
@@ -119,7 +122,10 @@ export default function LandingPage() {
 
             <div className="grid grid-cols-2 gap-4 mb-6">
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                onClick={() => setStep("patient_register")}
+                onClick={() => {
+                  setStep("patient_register")
+                  if (!displayName) setDisplayName("Sarah Jenkins")
+                }}
                 className="flex flex-col items-center gap-3 p-6 bg-white border border-rose-100 hover:border-rose-300 rounded-2xl shadow-sm transition-all group"
               >
                 <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center group-hover:bg-rose-100 transition-colors">
@@ -132,7 +138,10 @@ export default function LandingPage() {
               </motion.button>
 
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                onClick={() => setStep("clinic_register")}
+                onClick={() => {
+                  setStep("clinic_register")
+                  if (!orgName) setOrgName("Memorial Sloan Kettering")
+                }}
                 className="flex flex-col items-center gap-3 p-6 bg-white border border-rose-100 hover:border-indigo-300 rounded-2xl shadow-sm transition-all group"
               >
                 <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
@@ -198,7 +207,7 @@ export default function LandingPage() {
 
               <div>
                 <label className={labelCls}><Lock className="w-3 h-3 inline mr-1" />My Story (encrypted before transmission)</label>
-                <textarea value={story} onChange={e => setStory(e.target.value)} className={`${inputCls} h-20 resize-none`} placeholder="Briefly describe your journey..." />
+                <textarea value={story} onChange={e => setStory(e.target.value)} className={`${inputCls} h-20 resize-none`} placeholder="Tell us about your diagnosis, your goals, and what care means to you. This helps clinicians understand your journey..." />
               </div>
 
               <div>
@@ -302,6 +311,21 @@ export default function LandingPage() {
             </div>
             <h2 className="text-xl font-bold text-gray-900 mb-1 text-center">Welcome back</h2>
             <p className="text-gray-400 text-sm mb-6 text-center">Sign in to markovHealth</p>
+
+            {/* Demo account hints */}
+            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 mb-5 space-y-1">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Demo Accounts</p>
+              <button onClick={() => { setLoginEmail("patient@demo.com"); setLoginPassword("demo1234") }}
+                className="w-full text-left text-xs text-gray-600 hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-mono"
+              >
+                patient@demo.com / demo1234 → Patient view
+              </button>
+              <button onClick={() => { setLoginEmail("researcher@demo.com"); setLoginPassword("demo1234") }}
+                className="w-full text-left text-xs text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors font-mono"
+              >
+                researcher@demo.com / demo1234 → Clinician view
+              </button>
+            </div>
 
             <div className="space-y-4">
               <div>
