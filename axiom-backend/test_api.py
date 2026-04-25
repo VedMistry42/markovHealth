@@ -14,6 +14,11 @@ def test_high_urgency():
     assert response.status_code == 200
     data = response.json()
     assert data["selected_action"] == "MOBILE_UNIT"
+    # Verify geometry is properly formatted for Mapbox
+    assert data["geometry"]["type"] == "LineString"
+    assert len(data["geometry"]["coordinates"]) == 20
+    # Mapbox needs [lng, lat]
+    assert data["geometry"]["coordinates"][0] == [-76.497, 42.439] # Downtown Depot start
 
 def test_low_urgency():
     response = client.post("/calculate-route", json={
@@ -25,6 +30,10 @@ def test_low_urgency():
     assert response.status_code == 200
     data = response.json()
     assert data["selected_action"] == "LOCAL_CLINIC"
+    # Verify geometry
+    assert len(data["geometry"]["coordinates"]) == 20
+    # Local clinic route starts from patient
+    assert data["geometry"]["coordinates"][0] == [-76.48, 42.45]
 
 def test_no_match():
     response = client.post("/calculate-route", json={

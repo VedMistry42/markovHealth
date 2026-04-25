@@ -76,12 +76,17 @@ MOBILE_DEPOTS: list[dict] = [
 # ---------------------------------------------------------------------------
 # Reward-function weights
 # ---------------------------------------------------------------------------
-# Must sum to 1.0.  Increasing FRICTION_WEIGHT penalises hard-to-reach options
-# more heavily; increasing COST_WEIGHT prioritises cheaper care.
+# Three-term multi-objective reward:
+#   R = -(FRICTION_WEIGHT * PatientFriction)
+#       - (COST_WEIGHT    * OperationalCost)
+#       + (URGENCY_WEIGHT * UrgencyBonus)
+#
+# Weights must sum to 1.0.
 
-FRICTION_WEIGHT: float = 0.7
-COST_WEIGHT: float = 0.3
+FRICTION_WEIGHT: float = 0.4   # Penalises patient travel burden
+COST_WEIGHT:     float = 0.2   # Penalises system operational cost (0–100 scale)
+URGENCY_WEIGHT:  float = 0.4   # Rewards zero-friction options when urgency is high
 
-assert abs(FRICTION_WEIGHT + COST_WEIGHT - 1.0) < 1e-9, (
-    "FRICTION_WEIGHT + COST_WEIGHT must equal 1.0"
+assert abs(FRICTION_WEIGHT + COST_WEIGHT + URGENCY_WEIGHT - 1.0) < 1e-9, (
+    "FRICTION_WEIGHT + COST_WEIGHT + URGENCY_WEIGHT must equal 1.0"
 )

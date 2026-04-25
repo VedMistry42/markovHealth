@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from constants import (
     COST_WEIGHT,
     FRICTION_WEIGHT,
+    URGENCY_WEIGHT,
     HYBRID_CLINICS,
     MOBILE_DEPOTS,
     TRIAL_HUBS,
@@ -89,11 +90,20 @@ def _build_state(req: PatientRequest) -> State:
 
 @dataclass
 class ActionScore:
-    """Raw friction / cost components before reward aggregation."""
+    """Raw scoring components before reward aggregation.
+
+    friction       — Patient access friction (0–100).
+    cost_usd       — Estimated dollar cost displayed to the researcher.
+    cost_score     — Normalised operational cost (0–100) used in the reward.
+    urgency_bonus  — Maximum urgency bonus this action can earn (0–100).
+                     Applied at full weight only when urgency == 'high'.
+    """
 
     action: ActionEnum
     friction: float
     cost_usd: float
+    cost_score: float
+    urgency_bonus: float
     friction_rationale: str
     cost_rationale: str
 
@@ -101,57 +111,72 @@ class ActionScore:
 def calc_hub_score(state: State) -> ActionScore:
     """Score for HUB_FLIGHT.
 
-    Fixed maximum friction (patient must travel far to a major hub) and a
-    high fixed operational cost reflecting air transport logistics.
+    Patient friction: fixed at 100 (maximum exhaustion — long-distance travel).
+    Operational cost: LOW — existing trial infrastructure is already in place.
+    Urgency bonus: 0 — patient must travel; never the high-urgency gold standard.
     """
     return ActionScore(
         action=ActionEnum.HUB_FLIGHT,
         friction=100.0,
-        cost_usd=500.0,
+        cost_usd=150.0,
+        cost_score=20.0,      # Low: leverages existing hub infrastructure
+        urgency_bonus=0.0,
         friction_rationale=(
             f"Patient must travel {state.dist_to_hub_miles:.0f} mi to "
-            f"{state.nearest_hub['name']} — maximum access friction."
+            f"{state.nearest_hub['name']} — maximum access friction (score 100/100)."
         ),
-        cost_rationale="Air transport and hub-hospital admission estimated at $500.",
+        cost_rationale=(
+            "Low operational cost ($150) — trial leverages existing hub infrastructure."
+        ),
     )
 
 
 def calc_local_score(state: State) -> ActionScore:
     """Score for LOCAL_CLINIC.
 
-    Friction scales linearly with distance (2 friction-points per mile) so
-    a clinic 10 miles away scores 20, and 50 miles scores 100.  Cost is a
-    fixed medium value representing a standard clinic visit.
+    Patient friction: linear scale — distance_miles / 10.
+      e.g. 5 mi → 0.5, 20 mi → 2.0, 100 mi → 10.0 (uncapped).
+    Operational cost: MEDIUM — partner clinic fees.
+    Urgency bonus: 0 — patient must travel; penalised under high urgency.
     """
-    friction = min(state.dist_to_clinic_miles * 2.0, 100.0)
+    friction = state.dist_to_clinic_miles / 10.0
     return ActionScore(
         action=ActionEnum.LOCAL_CLINIC,
         friction=friction,
-        cost_usd=100.0,
+        cost_usd=250.0,
+        cost_score=50.0,      # Medium: local partner clinic fees
+        urgency_bonus=0.0,
         friction_rationale=(
             f"Nearest clinic ({state.nearest_clinic['name']}) is "
             f"{state.dist_to_clinic_miles:.1f} mi away — "
-            f"friction score {friction:.0f}/100."
+            f"friction score {friction:.2f} (distance ÷ 10)."
         ),
-        cost_rationale="Standard clinic visit estimated at $100.",
+        cost_rationale=(
+            "Medium operational cost ($250) — local partner clinic fees."
+        ),
     )
 
 
 def calc_mobile_score(state: State) -> ActionScore:
     """Score for MOBILE_UNIT.
 
-    Zero patient friction — the unit comes to them.  Operational cost is
-    higher than a clinic visit due to dispatch overhead.
+    Patient friction: 0 — the unit travels to the patient (gold standard).
+    Operational cost: HIGH — nurse salary, fuel, and equipment.
+    Urgency bonus: 100 — maximally rewarded when urgency is high.
     """
     return ActionScore(
         action=ActionEnum.MOBILE_UNIT,
         friction=0.0,
-        cost_usd=300.0,
+        cost_usd=400.0,
+        cost_score=80.0,      # High: nurse salary + fuel + equipment
+        urgency_bonus=100.0,  # Gold standard — earns full urgency bonus
         friction_rationale=(
             f"Mobile unit dispatched from {state.nearest_depot['name']} "
             f"({state.dist_to_depot_miles:.1f} mi away) — zero patient friction."
         ),
-        cost_rationale="Mobile unit dispatch and staffing estimated at $300.",
+        cost_rationale=(
+            "High operational cost ($400) — nurse salary, fuel, and equipment."
+        ),
     )
 
 
@@ -162,18 +187,19 @@ def calc_mobile_score(state: State) -> ActionScore:
 def _reward(score: ActionScore, urgency: str) -> float:
     """Compute scalar reward for an ActionScore.
 
-    Formula:
-        friction_penalty = friction × FRICTION_WEIGHT
-        If urgency == 'high': friction_penalty × 3   (urgency multiplier)
-        reward = -friction_penalty - (cost × COST_WEIGHT)
+    Multi-objective formula:
+        R = -(FRICTION_WEIGHT * friction)
+            - (COST_WEIGHT    * cost_score)
+            + (URGENCY_WEIGHT * urgency_bonus)   ← applied only when urgency == 'high'
 
-    A higher (less negative) reward is better.
+    A higher (less negative / more positive) reward is better.
     """
-    friction_penalty = score.friction * FRICTION_WEIGHT
-    if urgency.lower() == "high":
-        friction_penalty *= 3.0
-    cost_penalty = score.cost_usd * COST_WEIGHT
-    return -(friction_penalty + cost_penalty)
+    friction_penalty  = score.friction   * FRICTION_WEIGHT
+    cost_penalty      = score.cost_score * COST_WEIGHT
+    urgency_bonus_val = (
+        score.urgency_bonus * URGENCY_WEIGHT if urgency.lower() == "high" else 0.0
+    )
+    return -(friction_penalty + cost_penalty) + urgency_bonus_val
 
 
 # ---------------------------------------------------------------------------
@@ -199,20 +225,54 @@ def select_best_action(state: State) -> tuple[ActionScore, float]:
 # Rationale generator
 # ---------------------------------------------------------------------------
 
+def _dropout_risk(action: ActionEnum, dist_to_clinic_miles: float) -> int:
+    """Estimate trial-dropout risk percentage for the selected action.
+
+    Heuristic:
+      MOBILE_UNIT  — 0 % (care comes to the patient)
+      LOCAL_CLINIC — 5 % base + 2 % per mile of driving distance
+      HUB_FLIGHT   — 80 % (extreme travel burden)
+    """
+    if action == ActionEnum.MOBILE_UNIT:
+        return 0
+    if action == ActionEnum.HUB_FLIGHT:
+        return 80
+    return min(int(5 + dist_to_clinic_miles * 2), 95)
+
+
 def generate_rationale(score: ActionScore, reward: float, state: State) -> str:
     """Return a plain-English explanation of why this action was selected.
 
-    Written to be interpretable by both end-users and downstream AI agents.
+    Includes the reward score, contextual distance details, and a projected
+    trial-dropout risk so researchers can audit the AI decision at a glance.
     """
-    urgency_note = (
-        " Clinical urgency is HIGH — friction weight tripled to prioritise "
-        "minimising patient travel."
-        if state.urgency.lower() == "high"
-        else ""
+    action = score.action
+    urgency_clause = ""
+    if state.urgency.lower() == "high":
+        urgency_clause = (
+            f" Patient urgency is HIGH and the nearest clinic is "
+            f"{state.dist_to_clinic_miles:.1f} mi away"
+        )
+        if state.dist_to_clinic_miles > 20:
+            urgency_clause += f" (>{20} mi threshold)"
+        urgency_clause += "."
+
+    risk = _dropout_risk(action, state.dist_to_clinic_miles)
+    risk_clause = (
+        f" Estimated trial-dropout risk: {risk}%."
+        if risk > 0
+        else " Estimated trial-dropout risk: 0% — care delivered at the patient's location."
     )
+
+    action_label = {
+        ActionEnum.MOBILE_UNIT:  "Mobile Unit Dispatch",
+        ActionEnum.LOCAL_CLINIC: "Local Clinic Referral",
+        ActionEnum.HUB_FLIGHT:   "Hub Flight Transport",
+    }[action]
+
     return (
-        f"Selected {score.action.value} with reward score {reward:.2f}. "
-        f"{score.friction_rationale} {score.cost_rationale}{urgency_note}"
+        f"Selected {action_label} (reward {reward:.2f}).{urgency_clause} "
+        f"{score.friction_rationale} {score.cost_rationale}{risk_clause}"
     )
 
 
