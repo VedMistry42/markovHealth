@@ -1,0 +1,41 @@
+CLINICAL ENCOUNTER SUMMARY - CONFIDENTIAL
+Patient: Sarah Jenkins
+DOB: 11/14/1978 (Age: 47)
+MRN: 884-291-002
+Date of Encounter: 04/22/2026
+
+CHIEF COMPLAINT:
+Follow-up for recently diagnosed Stage IIIa non-small cell lung cancer (NSCLC).
+
+HISTORY OF PRESENT ILLNESS:
+The patient is a 47-year-old female presenting today to discuss treatment options for her newly diagnosed lung malignancy. A recent low-dose CT revealed a 4.2 cm spiculated mass in the right upper lobe with associated hilar adenopathy. Subsequent endobronchial ultrasound (EBUS) with TBNA confirmed adenocarcinoma, staged radiographically and pathologically as T2b N1 M0 (Stage IIIa).
+
+An expanded next-generation sequencing (NGS) panel was ordered. Results returned today confirm an EGFR exon 19 deletion. ALK/ROS1 translocations are negative. PD-L1 TPS is 15%.
+
+PAST MEDICAL HISTORY:
+- Hypertension (well-controlled on Amlodipine 5mg)
+- Mild asthma
+- No history of prior malignancies.
+
+SOCIAL HISTORY:
+Never smoker. Works as an architectural designer. Denies heavy alcohol use or illicit drug use. 
+
+REVIEW OF SYSTEMS:
+General: Denies recent weight loss, night sweats, or severe fatigue. 
+Respiratory: Reports occasional dry cough, no hemoptysis.
+Neurological: Denies headaches, visual changes, or focal weakness. ECOG Performance Status is 1.
+
+PHYSICAL EXAMINATION:
+Vitals: BP 118/74, HR 82, RR 16, SpO2 99% on RA.
+Lungs: Clear to auscultation bilaterally. No wheezes, rales, or rhonchi.
+Neurologic: Cranial nerves II-XII intact. 5/5 strength in all extremities.
+
+IMAGING & LABS:
+- Brain MRI (04/18/2026): No evidence of intracranial metastatic disease.
+- PET/CT (04/10/2026): FDG avidity isolated to the RUL mass (SUV max 9.4) and right hilar lymph node (SUV max 5.2). No distant metastases.
+- Basic metabolic panel and CBC are within normal limits. Adequate hepatic and renal function (Cr 0.8, AST 22, ALT 18).
+
+ASSESSMENT & PLAN:
+47-year-old female with newly diagnosed Stage IIIa EGFR-mutated NSCLC. The patient is motivated and eager to pursue aggressive, curative-intent therapy. She is medically fit (ECOG 1) with excellent organ function.
+Given the targetable EGFR mutation, we discussed standard-of-care chemoradiation followed by durvalumab, versus neoadjuvant targeted therapies or clinical trial enrollments assessing novel EGFR inhibitors in earlier stage settings. 
+The patient is highly interested in participating in a clinical trial before initiating standard therapy. We will proceed with screening her against our matching protocol.
