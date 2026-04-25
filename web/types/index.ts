@@ -14,6 +14,7 @@ export const ClaudeMatchOutputSchema = z.object({
   isMatch: z.boolean(),
   confidenceScore: z.number().int().min(1).max(100),
   matchedCriteria: z.array(z.string()),
+  ecog: z.number().int().min(0).max(4).optional(),   // extracted from medical notes
 })
 
 export const WebhookPayloadSchema = z.object({
@@ -22,6 +23,10 @@ export const WebhookPayloadSchema = z.object({
   lng: z.number(),
   trialId: z.string(),
   confidenceScore: z.number(),
+  // Clinical context for the RL routing engine
+  urgency: z.enum(["low", "medium", "high"]).optional(),
+  condition: z.string().optional(),
+  fragility_index: z.number().min(0).max(1).optional(),
 })
 
 export const UploadResponseSchema = z.object({

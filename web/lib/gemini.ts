@@ -25,6 +25,7 @@ Return ONLY a JSON object with exactly these keys:
 - isMatch: boolean
 - confidenceScore: integer 1-100
 - matchedCriteria: array of strings describing each matched or relevant criterion
+- ecog: integer 0-4 (ECOG performance status extracted from the notes; use 1 if not stated)
 
 TRIAL CRITERIA:
 ${trialCriteria}

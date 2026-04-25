@@ -76,17 +76,27 @@ MOBILE_DEPOTS: list[dict] = [
 # ---------------------------------------------------------------------------
 # Reward-function weights
 # ---------------------------------------------------------------------------
-# Three-term multi-objective reward:
-#   R = -(FRICTION_WEIGHT * PatientFriction)
-#       - (COST_WEIGHT    * OperationalCost)
-#       + (URGENCY_WEIGHT * UrgencyBonus)
+# STG-RL Bellman reward formula:
 #
-# Weights must sum to 1.0.
+#   R(s,a) = α·M_i  -  β·d(P_i,R_j)·F_i  -  γ·C_ops
+#
+#   α·M_i            → MATCH_WEIGHT   × match_score  (reward capturing high-confidence patients)
+#   β·d·F_i          → FRICTION_WEIGHT × friction × (1 + fragility_index)  (Empathy Penalty)
+#   γ·C_ops          → COST_WEIGHT    × cost_score   (operational cost)
+#   UrgencyBonus     → URGENCY_WEIGHT bonus when urgency == 'high'
+#
+# Outer weights (α + β + γ + urgency) are unconstrained — match score adds
+# a positive term so the sum no longer needs to equal 1.0.
 
-FRICTION_WEIGHT: float = 0.4   # Penalises patient travel burden
-COST_WEIGHT:     float = 0.2   # Penalises system operational cost (0–100 scale)
-URGENCY_WEIGHT:  float = 0.4   # Rewards zero-friction options when urgency is high
+MATCH_WEIGHT:    float = 0.05  # α — scales M_i (0-100) into reward space
+FRICTION_WEIGHT: float = 0.4   # β — penalises patient travel × fragility
+COST_WEIGHT:     float = 0.2   # γ — penalises operational cost (0-100 scale)
+URGENCY_WEIGHT:  float = 0.4   # bonus when urgency is high
 
-assert abs(FRICTION_WEIGHT + COST_WEIGHT + URGENCY_WEIGHT - 1.0) < 1e-9, (
-    "FRICTION_WEIGHT + COST_WEIGHT + URGENCY_WEIGHT must equal 1.0"
-)
+# ---------------------------------------------------------------------------
+# Test Kit costs (TEST_KIT action)
+# ---------------------------------------------------------------------------
+# Cheapest option — patient pays only for shipping; no nurse or clinic overhead.
+
+TEST_KIT_COST: float = 50    # USD — FedEx/UPS shipping only
+TEST_KIT_FRICTION: float = 5  # Minimal — patient opens a box at home

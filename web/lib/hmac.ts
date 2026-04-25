@@ -13,7 +13,12 @@ export async function dispatchToFastAPI(
   patientId: string,
   coords: { lat: number; lng: number },
   trialId: string,
-  confidenceScore: number
+  confidenceScore: number,
+  clinical?: {
+    urgency?: "low" | "medium" | "high"
+    condition?: string
+    fragility_index?: number
+  }
 ): Promise<void> {
   const webhookUrl = process.env.FASTAPI_WEBHOOK_URL
   const webhookSecret = process.env.FASTAPI_WEBHOOK_SECRET
@@ -32,6 +37,9 @@ export async function dispatchToFastAPI(
     lng: coords.lng,
     trialId,
     confidenceScore,
+    ...(clinical?.urgency        && { urgency:         clinical.urgency }),
+    ...(clinical?.condition      && { condition:        clinical.condition }),
+    ...(clinical?.fragility_index != null && { fragility_index: clinical.fragility_index }),
   })
 
   const signature = signPayload(payload, webhookSecret)

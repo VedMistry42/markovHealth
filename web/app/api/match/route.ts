@@ -109,7 +109,18 @@ export async function POST(req: NextRequest) {
 
     if (coords) {
       try {
-        await dispatchToFastAPI(patientId, coords, trialId, matchResult.confidenceScore)
+        // Derive fragility_index from ECOG (0=robust → 1=fully disabled)
+        const ecogMap: Record<number, number> = { 0: 0.0, 1: 0.2, 2: 0.5, 3: 0.8, 4: 1.0 }
+        const ecog = matchResult.ecog ?? 1
+        const fragility_index = ecogMap[ecog] ?? 0.5
+        const urgency: "low" | "medium" | "high" =
+          ecog <= 1 ? "low" : ecog === 2 ? "medium" : "high"
+
+        await dispatchToFastAPI(patientId, coords, trialId, matchResult.confidenceScore, {
+          urgency,
+          condition: matchResult.matchedCriteria[0] ?? "Advanced NSCLC, KRAS G12C",
+          fragility_index,
+        })
       } catch (err) {
         console.error("[MATCH] Webhook dispatch failed:", err instanceof Error ? err.message : err)
       }

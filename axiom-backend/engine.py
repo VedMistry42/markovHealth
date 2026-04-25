@@ -1,7 +1,7 @@
 """
 engine.py — Heuristic reinforcement-learning engine for Axiom routing.
 
-The engine evaluates three care-delivery actions against a reward function:
+The engine evaluates four care-delivery actions against a reward function:
 
     Reward = -(friction × FRICTION_WEIGHT) - (cost × COST_WEIGHT)
 
@@ -15,14 +15,18 @@ from dataclasses import dataclass
 from constants import (
     COST_WEIGHT,
     FRICTION_WEIGHT,
+    MATCH_WEIGHT,
     URGENCY_WEIGHT,
     HYBRID_CLINICS,
     MOBILE_DEPOTS,
     TRIAL_HUBS,
+    TEST_KIT_COST,
+    TEST_KIT_FRICTION,
 )
 from models import (
     ActionEnum,
     CostAnalysis,
+    EmpathyMetrics,
     Geometry,
     PatientRequest,
     RouteResponse,
@@ -61,6 +65,10 @@ class State:
     dist_to_clinic_miles: float
     dist_to_depot_miles: float
 
+    # STG-RL inputs from the Claude match analysis
+    fragility_index: float = 0.5  # 0.0 = robust (ECOG 0) → 1.0 = fragile (ECOG 4)
+    match_score: float = 50.0     # 0–100 trial match confidence
+
 
 def _build_state(req: PatientRequest) -> State:
     """Derive State from an inbound PatientRequest."""
@@ -81,6 +89,8 @@ def _build_state(req: PatientRequest) -> State:
         dist_to_hub_miles=calculate_distance(origin, (hub["lat"], hub["lng"])),
         dist_to_clinic_miles=calculate_distance(origin, (clinic["lat"], clinic["lng"])),
         dist_to_depot_miles=calculate_distance(origin, (depot["lat"], depot["lng"])),
+        fragility_index=(req.match_data.fragility_index if req.match_data else 0.5),
+        match_score=(req.match_data.match_score if req.match_data else 50.0),
     )
 
 
@@ -180,26 +190,82 @@ def calc_mobile_score(state: State) -> ActionScore:
     )
 
 
+def calc_test_kit_score(state: State) -> ActionScore:
+    """Score for TEST_KIT.
+
+    Patient friction: minimal — patient receives and self-administers a kit at home.
+    Operational cost: lowest — covers only courier shipping, no clinical overhead.
+    Urgency bonus: 0 — not appropriate for high-urgency cases.
+    Disqualified (score -9999) when urgency is 'high' because complex or
+    time-sensitive conditions require an in-person assessment.
+    """
+    if state.urgency.lower() == "high":
+        # Disqualify: urgent cases need hands-on care, not a mail-in kit.
+        # Use maximum friction/cost (100/100) so the reward is always worse than
+        # MOBILE_UNIT (+24 at high urgency) without breaching Pydantic's le=100 guard.
+        return ActionScore(
+            action=ActionEnum.TEST_KIT,
+            friction=100.0,
+            cost_usd=TEST_KIT_COST,
+            cost_score=100.0,
+            urgency_bonus=0.0,
+            friction_rationale="Test kit disqualified — patient urgency is HIGH.",
+            cost_rationale="Test kit disqualified — patient urgency is HIGH.",
+        )
+
+    return ActionScore(
+        action=ActionEnum.TEST_KIT,
+        friction=TEST_KIT_FRICTION,
+        cost_usd=TEST_KIT_COST,
+        cost_score=10.0,      # Lowest: shipping cost only
+        urgency_bonus=0.0,
+        friction_rationale=(
+            f"Self-collection kit mailed directly to patient — "
+            f"friction score {TEST_KIT_FRICTION}/100 (open a box at home)."
+        ),
+        cost_rationale=(
+            f"Lowest operational cost (${TEST_KIT_COST}) — "
+            "covers Axiom Express courier shipping only."
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reward function
 # ---------------------------------------------------------------------------
 
-def _reward(score: ActionScore, urgency: str) -> float:
+def _reward(
+    score: ActionScore,
+    urgency: str,
+    fragility_index: float = 0.5,
+    match_score: float = 50.0,
+) -> float:
     """Compute scalar reward for an ActionScore.
 
-    Multi-objective formula:
-        R = -(FRICTION_WEIGHT * friction)
-            - (COST_WEIGHT    * cost_score)
-            + (URGENCY_WEIGHT * urgency_bonus)   ← applied only when urgency == 'high'
+    Full STG-RL Bellman formula:
+
+        R(s,a) = α·M_i  −  β·d(P_i,R_j)·F_i  −  γ·C_ops  [+ urgency bonus]
+
+    Terms:
+        α·M_i       — MATCH_WEIGHT × match_score: reward for capturing a
+                       high-confidence trial match (higher score → more reward
+                       for any action, but especially ones with low friction).
+        β·d·F_i     — FRICTION_WEIGHT × friction × (1 + fragility_index):
+                       the Empathy Penalty. A fragile patient (F_i → 1) doubles
+                       the friction cost of travel-forcing actions, steering the
+                       agent toward MOBILE_UNIT / TEST_KIT without hard rules.
+        γ·C_ops     — COST_WEIGHT × cost_score: operational cost penalty.
+        urgency bonus — URGENCY_WEIGHT × urgency_bonus when urgency == 'high'.
 
     A higher (less negative / more positive) reward is better.
     """
-    friction_penalty  = score.friction   * FRICTION_WEIGHT
+    match_bonus       = match_score    * MATCH_WEIGHT
+    friction_penalty  = score.friction * FRICTION_WEIGHT * (1.0 + fragility_index)
     cost_penalty      = score.cost_score * COST_WEIGHT
     urgency_bonus_val = (
         score.urgency_bonus * URGENCY_WEIGHT if urgency.lower() == "high" else 0.0
     )
-    return -(friction_penalty + cost_penalty) + urgency_bonus_val
+    return match_bonus - (friction_penalty + cost_penalty) + urgency_bonus_val
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +282,9 @@ def select_best_action(state: State) -> tuple[ActionScore, float]:
         calc_hub_score(state),
         calc_local_score(state),
         calc_mobile_score(state),
+        calc_test_kit_score(state),
     ]
-    scored = [(s, _reward(s, state.urgency)) for s in candidates]
+    scored = [(s, _reward(s, state.urgency, state.fragility_index, state.match_score)) for s in candidates]
     return max(scored, key=lambda x: x[1])
 
 
@@ -235,6 +302,8 @@ def _dropout_risk(action: ActionEnum, dist_to_clinic_miles: float) -> int:
     """
     if action == ActionEnum.MOBILE_UNIT:
         return 0
+    if action == ActionEnum.TEST_KIT:
+        return 0  # Kit delivered at home — no travel, no dropout pressure
     if action == ActionEnum.HUB_FLIGHT:
         return 80
     return min(int(5 + dist_to_clinic_miles * 2), 95)
@@ -268,11 +337,21 @@ def generate_rationale(score: ActionScore, reward: float, state: State) -> str:
         ActionEnum.MOBILE_UNIT:  "Mobile Unit Dispatch",
         ActionEnum.LOCAL_CLINIC: "Local Clinic Referral",
         ActionEnum.HUB_FLIGHT:   "Hub Flight Transport",
+        ActionEnum.TEST_KIT:     "Self-Collection Test Kit",
     }[action]
+
+    test_kit_clause = ""
+    if action == ActionEnum.TEST_KIT:
+        test_kit_clause = (
+            " Medical match confirmed. A self-collection kit has been dispatched "
+            "via Axiom Express. Tracking ID: AX-42881. Please check the Patient "
+            "Portal for a step-by-step video guide."
+        )
 
     return (
         f"Selected {action_label} (reward {reward:.2f}).{urgency_clause} "
         f"{score.friction_rationale} {score.cost_rationale}{risk_clause}"
+        f"{test_kit_clause}"
     )
 
 
@@ -300,12 +379,14 @@ def evaluate_logistics(req: PatientRequest) -> RouteResponse:
     state = _build_state(req)
     best_score, best_reward = select_best_action(state)
 
-    # Resolve facility for the selected action
+    # Resolve facility for the selected action.
+    # TEST_KIT uses the nearest hub as the dispatch origin (kit mailed from hub).
     action = best_score.action
     facility_map = {
         ActionEnum.HUB_FLIGHT:   state.nearest_hub,
         ActionEnum.LOCAL_CLINIC: state.nearest_clinic,
         ActionEnum.MOBILE_UNIT:  state.nearest_depot,
+        ActionEnum.TEST_KIT:     state.nearest_hub,
     }
     facility = facility_map[action]
     patient  = (state.patient_lat, state.patient_lng)
@@ -317,6 +398,14 @@ def evaluate_logistics(req: PatientRequest) -> RouteResponse:
         num_points=20,
     )
 
+    # Empathy metrics: compare patient travel against hub-flight baseline
+    travel_saved = {
+        ActionEnum.HUB_FLIGHT:   0.0,
+        ActionEnum.LOCAL_CLINIC: max(0.0, state.dist_to_hub_miles - state.dist_to_clinic_miles),
+        ActionEnum.MOBILE_UNIT:  state.dist_to_hub_miles,
+        ActionEnum.TEST_KIT:     state.dist_to_hub_miles,
+    }[action]
+
     return RouteResponse(
         selected_action=action,
         rationale=generate_rationale(best_score, best_reward, state),
@@ -327,4 +416,10 @@ def evaluate_logistics(req: PatientRequest) -> RouteResponse:
             cost_rationale=best_score.cost_rationale,
         ),
         geometry=Geometry(type="LineString", coordinates=waypoints),
+        empathy_metrics=EmpathyMetrics(
+            patient_travel_saved_miles=round(travel_saved, 1),
+            fragility_accommodated=action in (ActionEnum.MOBILE_UNIT, ActionEnum.TEST_KIT),
+            match_score=state.match_score,
+            dropout_risk_pct=_dropout_risk(action, state.dist_to_clinic_miles),
+        ),
     )

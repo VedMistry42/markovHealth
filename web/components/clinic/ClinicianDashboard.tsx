@@ -4,6 +4,18 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Activity, Send, Filter, MapPin } from "lucide-react"
 import { PATIENT_ARCHETYPES } from "@/lib/sampleData"
 
+const FASTAPI_URL = process.env.NEXT_PUBLIC_FASTAPI_URL ?? "http://localhost:8000"
+
+// Clinical context for each archetype — fed directly into the RL engine
+const ARCHETYPE_ROUTING: Record<string, {
+  lat: number; lng: number; confidenceScore: number
+  urgency: "low" | "medium" | "high"; condition: string; fragility_index: number
+}> = {
+  "arch-1": { lat: 42.44,   lng: -76.50,   confidenceScore: 98, urgency: "low",  condition: "Stage IIIB NSCLC, KRAS G12C",                    fragility_index: 0.2 },
+  "arch-2": { lat: 43.0481, lng: -76.1474, confidenceScore: 74, urgency: "low",  condition: "Stage IV NSCLC, KRAS G12C, treated brain mets", fragility_index: 0.2 },
+  "arch-3": { lat: 42.0987, lng: -75.9180, confidenceScore: 12, urgency: "low",  condition: "Stage IV NSCLC, EGFR+/KRAS-wt",                  fragility_index: 0.0 },
+}
+
 export default function ClinicianDashboard() {
   const [criteria, setCriteria] = useState("")
   const [isSearching, setIsSearching] = useState(false)
@@ -20,14 +32,22 @@ export default function ClinicianDashboard() {
 
   const handleNotify = async (patientId: string) => {
     setNotifiedPatients(prev => [...prev, patientId])
-    // Simulate webhook to RL backend
+    const routing = ARCHETYPE_ROUTING[patientId]
+    if (!routing) return
     try {
-      await fetch('/api/match', {
-         method: 'POST',
-         body: JSON.stringify({ patientId, trialId: 'mock-trial-001', coords: { lat: 0, lng: 0 }})
+      // Dispatch directly to the RL backend — this triggers routing and
+      // stores the result so the map can pick it up on its next poll.
+      await fetch(`${FASTAPI_URL}/webhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patientId: `${patientId}-${Date.now()}`,
+          trialId: "trial-onco-001",
+          ...routing,
+        }),
       })
     } catch {
-      // Ignore webhook failure
+      // FastAPI not running — silent fail in dev
     }
   }
 

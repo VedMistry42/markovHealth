@@ -17,16 +17,18 @@ class Location(BaseModel):
 
 
 class ActionEnum(str, Enum):
-    """The three care-delivery actions Axiom can recommend.
+    """The four care-delivery actions Axiom can recommend.
 
     HUB_FLIGHT   — Transport the patient by air to a major hub hospital.
     LOCAL_CLINIC  — Direct the patient to the nearest brick-and-mortar clinic.
     MOBILE_UNIT  — Dispatch a mobile health unit to the patient's location.
+    TEST_KIT     — Mail a self-collection kit to the patient's address.
     """
 
     HUB_FLIGHT = "HUB_FLIGHT"
     LOCAL_CLINIC = "LOCAL_CLINIC"
     MOBILE_UNIT = "MOBILE_UNIT"
+    TEST_KIT = "TEST_KIT"
 
 
 class MatchData(BaseModel):
@@ -43,6 +45,21 @@ class MatchData(BaseModel):
     urgency: str = Field(
         ...,
         description="Triage urgency tier (e.g. 'critical', 'urgent', 'non-urgent')",
+    )
+    fragility_index: float = Field(
+        0.5,
+        ge=0,
+        le=1,
+        description=(
+            "Patient physical fragility 0.0=fully active (ECOG 0) to 1.0=completely "
+            "disabled (ECOG 4). Used to scale the Empathy Penalty in the reward function."
+        ),
+    )
+    match_score: float = Field(
+        50.0,
+        ge=0,
+        le=100,
+        description="Trial match confidence score 0–100, returned by the Claude API.",
     )
 
 
@@ -113,12 +130,42 @@ class Geometry(BaseModel):
     )
 
 
+class EmpathyMetrics(BaseModel):
+    """Human-impact metrics surfaced alongside the routing decision.
+
+    These are displayed in the Clinician UI to remind the care team they are
+    routing a person, not optimising a logistics ticket.
+    """
+
+    patient_travel_saved_miles: float = Field(
+        ...,
+        ge=0,
+        description="Miles of travel avoided compared to the hub-flight baseline",
+    )
+    fragility_accommodated: bool = Field(
+        ...,
+        description="True when the selected action brings care TO the patient",
+    )
+    match_score: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Trial match confidence score from the AI analysis",
+    )
+    dropout_risk_pct: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Estimated probability the patient drops out of the trial",
+    )
+
+
 class RouteResponse(BaseModel):
     """Axiom's routing decision returned to the front-end and/or orchestrating agent.
 
     Contains the recommended action, a plain-English rationale, a cost/friction
-    analysis, and a GeoJSON geometry that Mapbox can render directly as a route
-    layer.
+    analysis, a GeoJSON geometry that Mapbox can render directly as a route
+    layer, and human-impact empathy metrics.
     """
 
     selected_action: ActionEnum = Field(
@@ -134,4 +181,7 @@ class RouteResponse(BaseModel):
     geometry: Geometry = Field(
         ...,
         description="GeoJSON LineString of the recommended route for Mapbox visualisation",
+    )
+    empathy_metrics: EmpathyMetrics = Field(
+        ..., description="Human-impact metrics for the clinician dashboard"
     )
