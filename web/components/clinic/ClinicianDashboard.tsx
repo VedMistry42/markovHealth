@@ -1,8 +1,19 @@
 "use client"
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Activity, Send, Filter, MapPin, Upload, ChevronDown, ChevronUp, X, Zap } from "lucide-react"
+import { Activity, Send, Filter, MapPin, Upload, ChevronDown, ChevronUp, X, Zap, CheckCircle2 } from "lucide-react"
 import { PATIENT_ARCHETYPES } from "@/lib/sampleData"
+
+// Extract ECOG status from clinical text (returns 0-4)
+function extractEcog(clinicalText: string): number {
+  const m = clinicalText.match(/ECOG(?:\s+performance(?:\s+status)?)?[:\s]+([0-4])/i)
+  return m ? parseInt(m[1]) : 1  // default ECOG 1 if not found
+}
+
+// Fragility index 0-1 from ECOG 0-4
+function fragilityFromEcog(ecog: number): number {
+  return ecog / 4.0
+}
 
 // Scores — sorted order: 98, 91, 87, 72, 45, 12
 const SCORES: Record<string, number> = {
@@ -173,9 +184,17 @@ export default function ClinicianDashboard() {
     }, globalLogs.length * 210 + 600)
   }
 
+  const [toasts, setToasts] = useState<Record<string, { action: string; travelSaved: number; fragility: boolean; reward: number } | null>>({})
+
+  const dismissToast = (id: string) => setToasts(prev => ({ ...prev, [id]: null }))
+
   const runLogistics = async (patientId: string) => {
     const archetype = PATIENT_ARCHETYPES.find(a => a.id === patientId)
     if (!archetype) return
+
+    const ecog = extractEcog(archetype.clinicalText)
+    const fragility = fragilityFromEcog(ecog)
+    const matchScore = SCORES[patientId] ?? 85
 
     const expected = getExpectedAction(patientId)
     const logs = buildRlLogs(archetype.name, expected.action, expected.reward)
@@ -184,8 +203,13 @@ export default function ClinicianDashboard() {
     setLogisticsActive(prev => ({ ...prev, [patientId]: true }))
     setLogisticsState(prev => ({ ...prev, [patientId]: "loading" }))
 
-    // Call real RL backend
+    // Call the real RL backend with fragility + match score
     let finalLabel = expected.label
+    let travelSaved = 0
+    let fragilityAccommodated = false
+    let bestReward = expected.reward
+    let routeGeometry: number[][] | null = null
+
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_FASTAPI_URL ?? "http://localhost:8000"}/calculate-route`,
@@ -196,15 +220,28 @@ export default function ClinicianDashboard() {
             patient_id: patientId,
             patient_coords: { lat: archetype.lat, lng: archetype.lng },
             is_match: true,
-            match_data: { condition: "Stage IIIB NSCLC", urgency: "high" },
+            match_score: matchScore,
+            fragility_index: fragility,
+            match_data: { condition: "Stage IIIB NSCLC", urgency: "high", ecog_status: ecog },
           }),
         }
       )
       if (res.ok) {
         const route = await res.json()
-        if (route.selected_action === "MOBILE_UNIT") finalLabel = `Option A: Mobile Unit Dispatch (R=${expected.reward.toFixed(2)})`
-        else if (route.selected_action === "LOCAL_CLINIC") finalLabel = `Option A: Local Clinic Referral (R=${expected.reward.toFixed(2)})`
-        else finalLabel = `Option A: Hub Flight Transport (R=${expected.reward.toFixed(2)})`
+        const action = route.selected_action as string
+        const reward = route.logistics_plan?.empathy_metrics?.best_vs_worst_reward_delta ?? expected.reward
+        bestReward = reward
+        travelSaved = route.logistics_plan?.empathy_metrics?.patient_travel_saved_miles ?? 0
+        fragilityAccommodated = route.logistics_plan?.empathy_metrics?.fragility_accommodated ?? false
+        routeGeometry = route.logistics_plan?.route?.geometry?.coordinates ?? null
+        const timeStr = route.logistics_plan?.estimated_time ?? ""
+
+        const label = action === "MOBILE_UNIT"
+          ? `Mobile Unit Dispatch${timeStr ? ` · ${timeStr}` : ""} (R=${reward.toFixed(1)})`
+          : action === "LOCAL_CLINIC"
+          ? `Local Clinic Referral${timeStr ? ` · ${timeStr}` : ""} (R=${reward.toFixed(1)})`
+          : `Hub Flight Transport${timeStr ? ` · ${timeStr}` : ""} (R=${reward.toFixed(1)})`
+        finalLabel = `Option A: ${label}`
       }
     } catch { /* use simulated result */ }
 
@@ -212,7 +249,15 @@ export default function ClinicianDashboard() {
       setLogisticsActive(prev => ({ ...prev, [patientId]: false }))
       setLogisticsState(prev => ({ ...prev, [patientId]: "done" }))
       setSelectedOptions(prev => ({ ...prev, [patientId]: finalLabel }))
-      window.dispatchEvent(new CustomEvent("patient-dispatched", { detail: { patientId } }))
+      setToasts(prev => ({
+        ...prev,
+        [patientId]: { action: finalLabel, travelSaved, fragility: fragilityAccommodated, reward: bestReward }
+      }))
+      window.dispatchEvent(new CustomEvent("patient-dispatched", {
+        detail: { patientId, geometry: routeGeometry, archetype }
+      }))
+      // Auto-dismiss toast after 8s
+      setTimeout(() => dismissToast(patientId), 8000)
     }, logs.length * 210 + 400)
   }
 
