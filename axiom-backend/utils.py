@@ -215,6 +215,7 @@ def generate_bezier_waypoints(
 _HUB_FLIGHT   = "HUB_FLIGHT"
 _LOCAL_CLINIC = "LOCAL_CLINIC"
 _MOBILE_UNIT  = "MOBILE_UNIT"
+_TEST_KIT     = "TEST_KIT"
 
 
 def build_route_geometry(
@@ -241,11 +242,14 @@ def build_route_geometry(
       This reverses the direction so an animated dash on the line conveys
       the unit moving toward the patient, not away.
 
+    * TEST_KIT     — the kit is mailed FROM the nearest hub TO the patient.
+      Route: hub → patient (gentle bump_fraction=0.10).
+
     All coordinates are returned as [lng, lat] for Mapbox compatibility.
 
     Args:
         action:     ActionEnum value string — 'HUB_FLIGHT', 'LOCAL_CLINIC',
-                    or 'MOBILE_UNIT'.
+                    'MOBILE_UNIT', or 'TEST_KIT'.
         patient:    (lat, lng) of the patient's current position.
         facility:   Facility dict with 'lat' and 'lng' keys (hub / clinic /
                     depot, depending on action).
@@ -277,8 +281,14 @@ def build_route_geometry(
             fac_point, patient, num_points=num_points, bump_fraction=0.15
         )
 
+    elif action == _TEST_KIT:
+        # Hub (dispatch centre) → Patient (kit mailed to patient's address)
+        return generate_bezier_waypoints(
+            fac_point, patient, num_points=num_points, bump_fraction=0.10
+        )
+
     else:
         raise ValueError(
             f"Unknown action '{action}'. Expected one of: "
-            f"{_HUB_FLIGHT}, {_LOCAL_CLINIC}, {_MOBILE_UNIT}."
+            f"{_HUB_FLIGHT}, {_LOCAL_CLINIC}, {_MOBILE_UNIT}, {_TEST_KIT}."
         )
