@@ -217,27 +217,39 @@ export default function ClinicianDashboard() {
         }),
       }).catch(() => {})
 
-      // Send message to patient
-      await fetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          patientId:       patient.patientId,
-          trialId:         activeTrial?.id ?? "",
-          trialName:       activeTrial?.name ?? "Clinical Trial",
-          confidenceScore: patient.confidenceScore,
-          subject:         `You've been matched to ${activeTrial?.name ?? "a clinical trial"} — we come to you`,
-          body:            `Dear ${patient.name.split(" ")[0]},\n\nGreat news — our team has identified you as a strong match (${patient.confidenceScore}% confidence) for our trial "${activeTrial?.name ?? "Clinical Trial"}".\n\nOur RL routing engine has selected: ${actionLabel}. ${travelSaved} miles of travel saved.\n\nHere's what makes us different: we don't make you travel to us. We ${action === "TEST_KIT" ? "ship a genomic collection kit directly to your home" : action === "MOBILE_UNIT" ? "dispatch a mobile clinical unit to your location" : "connect you with the nearest clinic partner in your area"}. Nothing is on you — we handle all logistics.\n\nThis trial is evaluating a targeted therapy designed for exactly your profile. Please confirm your interest below and our coordinator will call you within 24 hours.`,
-          nextSteps: [
-            "Click 'Confirm Interest' below — no commitment required",
-            `${action === "TEST_KIT" ? "Receive your at-home collection kit within 3 business days" : action === "MOBILE_UNIT" ? "Our mobile unit will contact you to schedule a home visit" : "Get connected with a local clinic partner near you"}`,
-            "Complete a 20-minute telehealth screening with our coordinator",
-            "We handle all logistics, travel, and follow-up — nothing is on you",
-          ],
-        }),
-      }).catch(() => {})
-
-      setSentIds(p => new Set([...p, patient.patientId]))
+      // Send message to patient — only mark sent on success
+      try {
+        const msgRes = await fetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patientId:       patient.patientId,
+            trialId:         activeTrial?.id ?? "",
+            trialName:       activeTrial?.name ?? "Clinical Trial",
+            confidenceScore: patient.confidenceScore,
+            subject:         `You've been matched to ${activeTrial?.name ?? "a clinical trial"} — we come to you`,
+            body:            `Dear ${patient.name.split(" ")[0]},\n\nGreat news — our team has identified you as a strong match (${patient.confidenceScore}% confidence) for our trial "${activeTrial?.name ?? "Clinical Trial"}".\n\nOur RL routing engine has selected: ${actionLabel}. ${travelSaved} miles of travel saved.\n\nHere's what makes us different: we don't make you travel to us. We ${action === "TEST_KIT" ? "ship a genomic collection kit directly to your home" : action === "MOBILE_UNIT" ? "dispatch a mobile clinical unit to your location" : "connect you with the nearest clinic partner in your area"}. Nothing is on you — we handle all logistics.\n\nThis trial is evaluating a targeted therapy designed for exactly your profile. Please confirm your interest below and our coordinator will call you within 24 hours.`,
+            nextSteps: [
+              "Click 'Confirm Interest' below — no commitment required",
+              `${action === "TEST_KIT" ? "Receive your at-home collection kit within 3 business days" : action === "MOBILE_UNIT" ? "Our mobile unit will contact you to schedule a home visit" : "Get connected with a local clinic partner near you"}`,
+              "Complete a 20-minute telehealth screening with our coordinator",
+              "We handle all logistics, travel, and follow-up — nothing is on you",
+            ],
+          }),
+        })
+        if (msgRes.ok) {
+          setSentIds(p => new Set([...p, patient.patientId]))
+        } else {
+          const err = await msgRes.json().catch(() => ({}))
+          console.error("[SEND] message failed:", msgRes.status, err)
+          setRlState(p => ({ ...p, [patient.patientId]: "done" }))
+          alert(`Message failed to send (${msgRes.status}). Check you are signed in as a clinic account.`)
+          return
+        }
+      } catch (e) {
+        console.error("[SEND] network error:", e)
+        return
+      }
 
       window.dispatchEvent(new CustomEvent("patient-dispatched", {
         detail: { patientId: patient.patientId, geometry: routeGeo, name: patient.name }
