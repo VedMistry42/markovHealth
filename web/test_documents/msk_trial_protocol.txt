@@ -1,0 +1,26 @@
+MOUNT SINAI COMPREHENSIVE CANCER CENTER
+TRIAL PROTOCOL & INCLUSION GUIDELINES
+Protocol ID: ONCO-KRAS-001 (Phase II)
+
+TITLE:
+A Phase 2 Study of Targeted KRAS G12C Inhibition in Advanced Non-Small Cell Lung Cancer (NSCLC) with Geographic Logistics Sub-study.
+
+PRIMARY OBJECTATIVE:
+Assess the objective response rate (ORR) of a novel KRAS inhibitor in heavily pre-treated individuals with NSCLC.
+
+INCLUSION CRITERIA:
+1. Histologically confirmed Stage III or Stage IV Non-Small Cell Lung Cancer (NSCLC).
+2. Must have confirmed KRAS G12C mutation via liquid biopsy or tissue NGS.
+3. Eastern Cooperative Oncology Group (ECOG) performance status of 0 or 1.
+4. Patients must have progressed on or after standard-of-care platinum-based chemotherapy.
+5. No symptomatic brain metastases. Brain mets must be fully treated and stable.
+6. Willingness to participate in remote biomarker tracking.
+
+EXCLUSION CRITERIA:
+1. Presence of EGFR or ALK genomic aberrations.
+2. Active autoimmune disease requiring systemic therapy.
+3. Prior exposure to alternate KRAS G12C targeted therapies.
+
+LOGISTICAL PREFERENCES:
+- Prioritizing patients requiring mobile collection units to assess localized disparity mitigation.
+- Can accept out-of-state patients via hybrid clinic routing.

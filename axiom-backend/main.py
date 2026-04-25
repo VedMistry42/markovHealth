@@ -3,25 +3,17 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from constants import (
-    COST_WEIGHT,
-    FRICTION_WEIGHT,
-    HYBRID_CLINICS,
-    MOBILE_DEPOTS,
-    TRIAL_HUBS,
-)
-from engine import (
-    _build_state,
-    _reward,
-    calc_hub_score,
-    calc_local_score,
-    calc_mobile_score,
-    evaluate_logistics,
-)
-from models import ActionEnum, CostAnalysis, Geometry, PatientRequest, RouteResponse
-from utils import build_route_geometry
+from constants import HYBRID_CLINICS, MOBILE_DEPOTS, TRIAL_HUBS
+from engine import evaluate_logistics, score_hub_flight, score_local_clinic, score_mobile_unit, _build_state
+from models import ActionEnum, PatientRequest, RouteResponse
 
-app = FastAPI(title="Axiom Backend")
+app = FastAPI(
+    title="markovHealth RL Logistics Engine",
+    description=(
+        "Reward: R(s,a) = α·M − β·d·F − γ·C  [+ urgency_bonus]\n"
+        "α=match_weight, β=empathy_weight (fragility×distance), γ=cost_weight"
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,124 +24,63 @@ app.add_middleware(
 )
 
 
-# ---------------------------------------------------------------------------
-# Health check
-# ---------------------------------------------------------------------------
-
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "engine": "markovHealth RL v2 — Empathy Reward Function"}
 
-
-# ---------------------------------------------------------------------------
-# Core routing endpoint
-# ---------------------------------------------------------------------------
 
 @app.post("/calculate-route", response_model=RouteResponse)
 def calculate_route(
     req: PatientRequest,
     force_action: Optional[ActionEnum] = Query(
         None,
-        description=(
-            "Demo override: force a specific action regardless of reward scores. "
-            "Useful for showcasing a particular route type (e.g. MOBILE_UNIT truck icon)."
-        ),
+        description="Demo override: force a specific action regardless of reward scores.",
     ),
 ) -> RouteResponse:
-    """Evaluate all three care-delivery actions and return the best route.
+    """
+    Full RL routing evaluation.
 
-    Pass `?force_action=MOBILE_UNIT` (or HUB_FLIGHT / LOCAL_CLINIC) to bypass
-    the reward engine and hard-code a specific action for demo purposes.
+    The engine scores all three actions using:
+        R(s, a) = α·M_i  −  β·d(P_i, R_j)·F_i  −  γ·C_ops
 
-    Returns 400 if the patient is not flagged as a trial match.
+    Where F_i (fragility_index) drives the Empathy Penalty — a fragile patient
+    (high ECOG) facing a long journey incurs a large penalty, forcing the engine
+    to dispatch a mobile unit even when that's operationally more expensive.
+
+    Returns a RouteResponse that includes:
+    - selected_action + rationale
+    - cost_analysis with empathy_penalty
+    - geometry (GeoJSON LineString for Mapbox)
+    - logistics_plan with EmpathyMetrics (patient_travel_saved_miles, etc.)
     """
     print("\n" + "=" * 60)
-    print(f"[AXIOM] New request  patient_id={req.patient_id}")
-    print(f"[AXIOM] Coords       lat={req.patient_coords.lat}  lng={req.patient_coords.lng}")
-    print(f"[AXIOM] is_match={req.is_match}  force_action={force_action}")
+    print(f"[markovRL] patient_id={req.patient_id}")
+    print(f"[markovRL] coords    lat={req.patient_coords.lat:.4f}  lng={req.patient_coords.lng:.4f}")
+    print(f"[markovRL] match_score={req.match_score:.1f}  fragility={req.fragility_index:.2f}  is_match={req.is_match}")
 
-    # --- Guard: non-match patients are not routed ---
     if not req.is_match:
-        print("[AXIOM] ✗ Patient not eligible — returning 400")
-        raise HTTPException(
-            status_code=400,
-            detail="Patient not eligible for this trial.",
-        )
+        raise HTTPException(status_code=400, detail="Patient not eligible for this trial.")
 
-    print(f"[AXIOM] match_data   condition={req.match_data.condition!r}  urgency={req.match_data.urgency!r}")
-
-    # --- Build world-state ---
     state = _build_state(req)
-    print(f"\n[AXIOM] Nearest hub    : {state.nearest_hub['name']}  ({state.dist_to_hub_miles:.1f} mi)")
-    print(f"[AXIOM] Nearest clinic : {state.nearest_clinic['name']}  ({state.dist_to_clinic_miles:.1f} mi)")
-    print(f"[AXIOM] Nearest depot  : {state.nearest_depot['name']}  ({state.dist_to_depot_miles:.1f} mi)")
+    print(f"[markovRL] nearest hub    : {state.nearest_hub['name']}  ({state.dist_to_hub_miles:.1f} mi)")
+    print(f"[markovRL] nearest clinic : {state.nearest_clinic['name']}  ({state.dist_to_clinic_miles:.1f} mi)")
+    print(f"[markovRL] nearest depot  : {state.nearest_depot['name']}  ({state.dist_to_depot_miles:.1f} mi)")
 
-    # --- Score all three actions (always computed for the reward log) ---
-    hub_score    = calc_hub_score(state)
-    local_score  = calc_local_score(state)
-    mobile_score = calc_mobile_score(state)
+    hub_s    = score_hub_flight(state)
+    clinic_s = score_local_clinic(state)
+    mobile_s = score_mobile_unit(state)
 
-    r_hub    = _reward(hub_score,    state.urgency)
-    r_local  = _reward(local_score,  state.urgency)
-    r_mobile = _reward(mobile_score, state.urgency)
+    print(f"\n[markovRL] Reward scores (R = α·M − β·d·F − γ·C)")
+    print(f"  HUB_FLIGHT   : M={hub_s.match_term:.1f}  penalty={hub_s.empathy_penalty:.1f}  cost={hub_s.cost_term:.1f}  R={hub_s.reward:.2f}")
+    print(f"  LOCAL_CLINIC : M={clinic_s.match_term:.1f}  penalty={clinic_s.empathy_penalty:.1f}  cost={clinic_s.cost_term:.1f}  R={clinic_s.reward:.2f}")
+    print(f"  MOBILE_UNIT  : M={mobile_s.match_term:.1f}  penalty={mobile_s.empathy_penalty:.1f}  cost={mobile_s.cost_term:.1f}  R={mobile_s.reward:.2f}")
 
-    urgency_note = "  ← UrgencyBonus active (HIGH urgency)" if state.urgency.lower() == "high" else ""
-    print(f"\n[AXIOM] Reward scores  (higher = better){urgency_note}")
-    print(f"[AXIOM]   HUB_FLIGHT   friction={hub_score.friction:6.2f}  cost_score={hub_score.cost_score:5.0f}  urgency_bonus={hub_score.urgency_bonus:5.0f}  reward={r_hub:8.2f}")
-    print(f"[AXIOM]   LOCAL_CLINIC friction={local_score.friction:6.2f}  cost_score={local_score.cost_score:5.0f}  urgency_bonus={local_score.urgency_bonus:5.0f}  reward={r_local:8.2f}")
-    print(f"[AXIOM]   MOBILE_UNIT  friction={mobile_score.friction:6.2f}  cost_score={mobile_score.cost_score:5.0f}  urgency_bonus={mobile_score.urgency_bonus:5.0f}  reward={r_mobile:8.2f}")
-
-    # --- Demo override: bypass engine and force a specific action ---
-    if force_action is not None:
-        print(f"\n[AXIOM] ⚡ DEMO OVERRIDE — forcing action: {force_action.value}")
-        score_map = {
-            ActionEnum.HUB_FLIGHT:   hub_score,
-            ActionEnum.LOCAL_CLINIC: local_score,
-            ActionEnum.MOBILE_UNIT:  mobile_score,
-        }
-        reward_map = {
-            ActionEnum.HUB_FLIGHT:   r_hub,
-            ActionEnum.LOCAL_CLINIC: r_local,
-            ActionEnum.MOBILE_UNIT:  r_mobile,
-        }
-        forced_score  = score_map[force_action]
-        forced_reward = reward_map[force_action]
-        facility_map = {
-            ActionEnum.HUB_FLIGHT:   state.nearest_hub,
-            ActionEnum.LOCAL_CLINIC: state.nearest_clinic,
-            ActionEnum.MOBILE_UNIT:  state.nearest_depot,
-        }
-        facility  = facility_map[force_action]
-        patient   = (state.patient_lat, state.patient_lng)
-        waypoints = build_route_geometry(
-            action=force_action.value,
-            patient=patient,
-            facility=facility,
-            num_points=20,
-        )
-        from engine import generate_rationale
-        rationale = (
-            f"[DEMO OVERRIDE] {generate_rationale(forced_score, forced_reward, state)}"
-        )
-        response = RouteResponse(
-            selected_action=force_action,
-            rationale=rationale,
-            cost_analysis=CostAnalysis(
-                friction_score=forced_score.friction,
-                cost_usd=forced_score.cost_usd,
-                friction_rationale=forced_score.friction_rationale,
-                cost_rationale=forced_score.cost_rationale,
-            ),
-            geometry=Geometry(type="LineString", coordinates=waypoints),
-        )
-        print(f"[AXIOM] ✓ Forced       {response.selected_action.value}")
-        print("=" * 60 + "\n")
-        return response
-
-    # --- Normal evaluation ---
     response = evaluate_logistics(req)
-    print(f"\n[AXIOM] ✓ Decision     {response.selected_action.value}")
-    print(f"[AXIOM] Rationale      {response.rationale[:120]}…")
+
+    print(f"\n[markovRL] DECISION: {response.selected_action.value}")
+    print(f"[markovRL] travel_saved={response.logistics_plan.empathy_metrics.patient_travel_saved_miles:.1f} mi")
+    print(f"[markovRL] fragility_accommodated={response.logistics_plan.empathy_metrics.fragility_accommodated}")
+    print(f"[markovRL] empathy_penalty={response.logistics_plan.empathy_metrics.empathy_penalty_applied:.2f}")
     print("=" * 60 + "\n")
 
     return response

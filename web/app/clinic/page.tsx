@@ -16,7 +16,7 @@ export default function ClinicPage() {
       <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b border-rose-100 bg-white/80 backdrop-blur-sm z-20 shadow-sm">
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-rose-500" />
-          <span className="font-semibold text-gray-900 text-lg">Axiom <span className="font-light">Clinic View</span></span>
+          <span className="font-semibold text-gray-900 text-lg">markovHealth <span className="font-light text-gray-400">Clinic</span></span>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/clinic/trials" className="flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-800 font-medium transition-colors">

@@ -81,7 +81,7 @@ export default function ResearcherMap() {
             </div>
           `
           new mapboxgl.default.Marker({ element: el })
-            .setLngLat([unit.lat, unit.lng]) // using lat as lng for simplicity in mock
+            .setLngLat([unit.lng, unit.lat])
             .setPopup(new mapboxgl.default.Popup({ offset: 16 }).setHTML(`<p style="color:#111;font-size:12px;font-weight:600">${unit.label}</p><p style="color:#555;font-size:11px">En route</p>`))
             .addTo(map)
         })

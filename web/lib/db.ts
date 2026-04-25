@@ -16,6 +16,18 @@ export interface Message {
   confidenceScore: number
   createdAt: string
   read: boolean
+  contactEmail?: string
+  contactPhone?: string
+}
+
+export interface Trial {
+  id: string
+  trialName: string
+  criteria: string
+  nctId?: string
+  coordinator?: string
+  contactEmail?: string
+  createdAt: string
 }
 
 interface MatchRecord {
@@ -39,11 +51,13 @@ const g = globalThis as unknown as {
   _axiomMessages?: Map<string, Message>
   _axiomMatches?: Map<string, MatchRecord>
   _axiomMedical?: Map<string, MedicalRecord>
+  _axiomTrials?: Map<string, Trial>
 }
 
 g._axiomMessages ??= new Map()
 g._axiomMatches ??= new Map()
 g._axiomMedical ??= new Map()
+g._axiomTrials ??= new Map()
 
 export const db = {
   message: {
@@ -98,6 +112,17 @@ export const db = {
   user: {
     async upsert({ where }: { where: { id: string }; update: object; create: object }) {
       return { id: where.id }
+    },
+  },
+
+  trial: {
+    async create({ data }: { data: Omit<Trial, "id" | "createdAt"> }): Promise<Trial> {
+      const record: Trial = { ...data, id: randomUUID(), createdAt: new Date().toISOString() }
+      g._axiomTrials!.set(record.id, record)
+      return record
+    },
+    async findMany(): Promise<Trial[]> {
+      return Array.from(g._axiomTrials!.values())
     },
   },
 }

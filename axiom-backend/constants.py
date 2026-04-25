@@ -1,16 +1,30 @@
 """
-constants.py — Mock world-state for Axiom routing demo.
+constants.py — markovHealth RL routing engine constants.
 
-All coordinates are real-world locations chosen to produce clean Mapbox
-polylines centred on Ithaca, NY.  Capacity values simulate live slot
-availability that a real system would pull from an EHR or scheduling API.
+Reward weights for: R(s,a) = α·M  −  β·d·F  −  γ·C  [+ urgency_bonus]
+
+α (MATCH_WEIGHT)   — reward for capturing a high-confidence matched patient.
+β (EMPATHY_WEIGHT) — scales distance × fragility penalty. Higher = engine
+                     more aggressively dispatches mobile units for fragile patients.
+γ (COST_WEIGHT)    — penalises operational spend (nurse, fuel, hub logistics).
+
+Weights do NOT need to sum to 1 — they are in reward-space units.
+The tuned values below were chosen so that a fragile patient (F=0.75)
+20+ miles from a clinic tips the engine from LOCAL_CLINIC → MOBILE_UNIT.
 """
 
 # ---------------------------------------------------------------------------
-# Trial Hub Hospitals (air-transport destinations)
+# Reward weights
 # ---------------------------------------------------------------------------
-# High-capability facilities reachable by HUB_FLIGHT action.
-# Each hub has no capacity cap — they are always assumed to have capacity.
+
+MATCH_WEIGHT:   float = 1.2    # α — bonus per match-score point
+EMPATHY_WEIGHT: float = 0.8    # β — miles × fragility penalty multiplier
+COST_WEIGHT:    float = 0.05   # γ — cost penalty per dollar
+URGENCY_BONUS:  float = 30.0   # added to MOBILE_UNIT reward when urgency == high
+
+# ---------------------------------------------------------------------------
+# Trial Hub Hospitals (HUB_FLIGHT destinations)
+# ---------------------------------------------------------------------------
 
 TRIAL_HUBS: list[dict] = [
     {
@@ -28,10 +42,8 @@ TRIAL_HUBS: list[dict] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Hybrid Clinics (LOCAL_CLINIC action destinations)
+# Hybrid Clinics (LOCAL_CLINIC destinations)
 # ---------------------------------------------------------------------------
-# Brick-and-mortar clinics in the Ithaca / Finger Lakes region.
-# `capacity` is the number of same-day walk-in slots available (mock value).
 
 HYBRID_CLINICS: list[dict] = [
     {
@@ -48,13 +60,25 @@ HYBRID_CLINICS: list[dict] = [
         "city": "Ithaca, NY",
         "capacity": 5,
     },
+    {
+        "name": "Upstate University Hospital",
+        "lat": 43.0481,
+        "lng": -76.1474,
+        "city": "Syracuse, NY",
+        "capacity": 3,
+    },
+    {
+        "name": "Rochester Regional Health",
+        "lat": 43.1566,
+        "lng": -77.6088,
+        "city": "Rochester, NY",
+        "capacity": 4,
+    },
 ]
 
 # ---------------------------------------------------------------------------
-# Mobile Unit Depots (MOBILE_UNIT action origin points)
+# Mobile Unit Depots (MOBILE_UNIT origin points)
 # ---------------------------------------------------------------------------
-# Staging locations where mobile health units are parked and ready to deploy.
-# `capacity` is the number of units available at each depot (mock value).
 
 MOBILE_DEPOTS: list[dict] = [
     {
@@ -71,22 +95,18 @@ MOBILE_DEPOTS: list[dict] = [
         "city": "Ithaca, NY",
         "capacity": 5,
     },
+    {
+        "name": "Syracuse Staging Area",
+        "lat": 43.0600,
+        "lng": -76.1500,
+        "city": "Syracuse, NY",
+        "capacity": 3,
+    },
+    {
+        "name": "Rochester Mobile Hub",
+        "lat": 43.1500,
+        "lng": -77.6000,
+        "city": "Rochester, NY",
+        "capacity": 2,
+    },
 ]
-
-# ---------------------------------------------------------------------------
-# Reward-function weights
-# ---------------------------------------------------------------------------
-# Three-term multi-objective reward:
-#   R = -(FRICTION_WEIGHT * PatientFriction)
-#       - (COST_WEIGHT    * OperationalCost)
-#       + (URGENCY_WEIGHT * UrgencyBonus)
-#
-# Weights must sum to 1.0.
-
-FRICTION_WEIGHT: float = 0.4   # Penalises patient travel burden
-COST_WEIGHT:     float = 0.2   # Penalises system operational cost (0–100 scale)
-URGENCY_WEIGHT:  float = 0.4   # Rewards zero-friction options when urgency is high
-
-assert abs(FRICTION_WEIGHT + COST_WEIGHT + URGENCY_WEIGHT - 1.0) < 1e-9, (
-    "FRICTION_WEIGHT + COST_WEIGHT + URGENCY_WEIGHT must equal 1.0"
-)

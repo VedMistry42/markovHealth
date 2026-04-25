@@ -4,7 +4,7 @@ export const TRIAL_NAME = "Phase II: Targeted KRAS G12C Inhibitor in Advanced NS
 export const TRIAL_CRITERIA = `
 TRIAL: ${TRIAL_NAME}
 TRIAL ID: ${TRIAL_ID}
-SPONSOR: Axiom Oncology Research Consortium
+SPONSOR: markovHealth Research Consortium
 
 INCLUSION CRITERIA:
 1. Histologically confirmed non-small cell lung cancer (NSCLC), adenocarcinoma subtype

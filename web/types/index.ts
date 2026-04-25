@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 export const MatchRequestSchema = z.object({
-  patientId: z.string().uuid(),
+  patientId: z.string().min(1),
   deidentifiedSummary: z.string().min(10).max(8000),
   trialId: z.string().default("trial-onco-001"),
   coords: z.object({
@@ -25,7 +25,7 @@ export const WebhookPayloadSchema = z.object({
 })
 
 export const UploadResponseSchema = z.object({
-  patientId: z.string().uuid(),
+  patientId: z.string(),
   deidentifiedSummary: z.string(),
 })
 

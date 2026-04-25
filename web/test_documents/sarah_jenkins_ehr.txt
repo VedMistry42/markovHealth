@@ -1,0 +1,28 @@
+UPSTATE ONCOLOGY ASSOCIATES
+ELECTRONIC HEALTH RECORD - PATIENT EXPORT
+
+PATIENT INFORMATION:
+Name: Sarah Jenkins
+DOB: 04/12/1973 (Age 52)
+Location: Ithaca, NY
+
+CHIEF COMPLAINT & HISTORY:
+Patient is a 52-year-old female presenting with Stage IIIB Non-Small Cell Lung Cancer (NSCLC), adenocarcinoma subtype. Originally diagnosed 8 months ago following a persistent cough.
+
+GENOMIC PROFILING (FoundationOne CDx):
+- KRAS G12C: POSITIVE (Variant Allele Frequency: 41%)
+- EGFR: Negative
+- ALK/ROS1: Negative
+- PD-L1 TPS: 22%
+
+PRIOR TREATMENTS:
+- First-Line: Carboplatin + Pemetrexed (4 cycles). Patient experienced stable disease but discontinued due to neuropathy.
+- Second-Line: Docetaxel (2 cycles). Imaging confirmed progressive disease per RECIST 1.1 criteria with enlarging right lower lobe mass (currently 2.8 cm).
+
+CURRENT STATUS:
+- ECOG Performance Status: 1 (Ambulatory, capable of light work).
+- Brain MRI (conducted 6 weeks prior): Completely clear. No evidence of brain metastasis.
+- Vitals: Stable. Overwhelming fatigue but eager to pursue targeted clinical trials.
+
+NOTES:
+Patient is an art teacher and is highly motivated to find localized treatment options or remote participation studies to minimize family disruption.
