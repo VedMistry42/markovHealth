@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id
+  email        String   @unique
+  password     String
+  role         String   // "patient" | "researcher"
+  displayName  String?
+  phone        String?
+  address      String?
+  story        String?
+  orgName      String?
+  specialty    String?
+  npi          String?
+  lat          Float?
+  lng          Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages     Message[]
+  matches      Match[]
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  patientId       String
+  fromName        String
+  fromOrg         String
+  subject         String
+  body            String   @db.Text
+  nextSteps       Json?
+  trialId         String
+  trialName       String
+  confidenceScore Int
+  read            Boolean  @default(false)
+  contactEmail    String?
+  contactPhone    String?
+  createdAt       DateTime @default(now())
+
+  patient         User     @relation(fields: [patientId], references: [id])
+}
+
+model Match {
+  id              String   @id @default(uuid())
+  patientId       String
+  trialId         String
+  confidenceScore Int
+  matchedCriteria Json?
+  status          String   @default("PENDING") // "PENDING", "CONFIRMED"
+  lat             Float?
+  lng             Float?
+  patientName     String?
+  condition       String?
+  createdAt       DateTime @default(now())
+
+  patient         User     @relation(fields: [patientId], references: [id])
+}
+
+model LogisticsPlan {
+  id          String   @id @default(uuid())
+  patientId   String
+  trialId     String
+  payload     Json
+  createdAt   DateTime @default(now())
+}
+
+model Trial {
+  id           String   @id @default(uuid())
+  trialName    String
+  criteria     String   @db.Text
+  nctId        String?
+  coordinator  String?
+  contactEmail String?
+  researcherId String?
+  createdAt    DateTime @default(now())
+}

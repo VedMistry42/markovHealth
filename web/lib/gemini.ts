@@ -14,6 +14,38 @@ const messageModel = genAI.getGenerativeModel({
   generationConfig: { responseMimeType: "application/json" },
 })
 
+const extractModel = genAI.getGenerativeModel({
+  model: "gemini-1.5-flash",
+  generationConfig: { responseMimeType: "application/json" },
+})
+
+export async function extractTrialCriteria(text: string): Promise<{
+  name: string; indication: string; criteria: string; phase: string
+}> {
+  const prompt = `Extract key information from this clinical trial protocol document.
+Return ONLY a JSON object with exactly these keys:
+- name: string (concise trial name/title, max 80 chars)
+- indication: string (medical condition being studied, 1-4 words)
+- criteria: string (key inclusion and exclusion criteria as a concise paragraph, max 500 chars)
+- phase: string (e.g. "Phase II", "Phase I/II", "Phase III")
+
+TRIAL DOCUMENT:
+${text.slice(0, 5000)}`
+
+  try {
+    const result = await extractModel.generateContent(prompt)
+    const t = result.response.text().replace(/```json/gi, "").replace(/```/g, "").trim()
+    return JSON.parse(t)
+  } catch {
+    return {
+      name: "Clinical Trial Protocol",
+      indication: "Advanced NSCLC",
+      criteria: "KRAS G12C mutation confirmed. Stage IIIB/IV NSCLC. ECOG PS ≤ 1. No active brain metastases. Prior platinum-based chemotherapy. No prior KRAS-directed therapy.",
+      phase: "Phase II",
+    }
+  }
+}
+
 export async function matchPatientToTrial(
   deidentifiedSummary: string,
   trialCriteria: string

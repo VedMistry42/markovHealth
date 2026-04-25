@@ -56,7 +56,7 @@ export default withAuth(
         const { pathname } = req.nextUrl
         if (
           pathname === "/" ||
-          pathname === "/api/register" ||
+          pathname.startsWith("/api/auth/register") ||
           pathname.startsWith("/api/auth") ||
           pathname.startsWith("/_next") ||
           pathname.startsWith("/favicon")

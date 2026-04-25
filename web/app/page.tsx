@@ -1,356 +1,296 @@
 "use client"
-import { useState, useEffect } from "react"
-import { signIn, useSession } from "next-auth/react"
+import { useState } from "react"
+import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { Activity, Map, ArrowRight, User, ShieldCheck, Lock, Phone, Mail, Home, Eye, EyeOff } from "lucide-react"
+import { Activity, ArrowRight, User, ShieldCheck, Lock, Building2, Loader2, LogIn } from "lucide-react"
 
-type Step = "role" | "patient_register" | "clinic_register" | "login"
+type Step = "role" | "patient" | "clinic" | "login"
 
 export default function LandingPage() {
-  const { data: session } = useSession()
   const router = useRouter()
-  const [error, setError] = useState("")
+  const [step, setStep]       = useState<Step>("role")
+  const [error, setError]     = useState("")
   const [loading, setLoading] = useState(false)
-  const [step, setStep] = useState<Step>("role")
-  const [showPw, setShowPw] = useState(false)
 
-  // Shared auth fields
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [displayName, setDisplayName] = useState("")
-  const [phone, setPhone] = useState("")
+  // Patient signup fields
+  const [pName,  setPName]  = useState("")
+  const [pEmail, setPEmail] = useState("")
+  const [pPw,    setPPw]    = useState("")
+  const [pPhone, setPPhone] = useState("")
+  const [pAge,   setPAge]   = useState("")
+  const [pZip,   setPZip]   = useState("")
+  const [pStory, setPStory] = useState("")
 
-  // Patient-only
-  const [address, setAddress] = useState("")
-  const [age, setAge] = useState("")
-  const [story, setStory] = useState("")
-
-  // Clinic-only
-  const [orgName, setOrgName] = useState("")
-  const [specialty, setSpecialty] = useState("")
-  const [npi, setNpi] = useState("")
+  // Clinic signup fields
+  const [cName,      setCName]      = useState("")
+  const [cEmail,     setCEmail]     = useState("")
+  const [cPw,        setCPw]        = useState("")
+  const [cPhone,     setCPhone]     = useState("")
+  const [cOrg,       setCOrg]       = useState("")
+  const [cSpecialty, setCSpecialty] = useState("")
+  const [cLocation,  setCLocation]  = useState("")
 
   // Login fields
-  const [loginEmail, setLoginEmail] = useState("")
-  const [loginPassword, setLoginPassword] = useState("")
+  const [lEmail, setLEmail] = useState("")
+  const [lPw,    setLPw]    = useState("")
 
-  useEffect(() => {
-    if (session) {
-      router.push(session.user.role === "researcher" ? "/clinic" : "/patient")
-    }
-  }, [session, router])
-
-  async function handleRegister(role: "patient" | "researcher") {
-    setLoading(true)
-    setError("")
-
-    const payload = role === "patient"
-      ? { email, password, role, displayName, phone, address }
-      : { email, password, role, displayName: orgName, phone }
-
-    // Save extra context locally for pre-population
-    if (role === "patient") {
-      localStorage.setItem("userContext", JSON.stringify({ name: displayName, age, story, phone, address }))
-    } else {
-      localStorage.setItem("clinicContext", JSON.stringify({ name: orgName, specialty, npi, phone }))
-    }
-
+  async function registerAndLogin(role: "patient" | "researcher") {
+    setLoading(true); setError("")
+    const body = role === "patient"
+      ? { role, name: pName, email: pEmail, password: pPw, phone: pPhone, age: pAge, zip: pZip, story: pStory }
+      : { role, name: cName, email: cEmail, password: cPw, phone: cPhone, orgName: cOrg, specialty: cSpecialty, location: cLocation }
     try {
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const res = await fetch("/api/auth/register", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || "Registration failed")
-        setLoading(false)
-        return
+      if (!res.ok) { setError(data.error ?? "Registration failed"); setLoading(false); return }
+      const result = await signIn("credentials", {
+        email: role === "patient" ? pEmail : cEmail,
+        password: role === "patient" ? pPw : cPw,
+        redirect: false,
+      })
+      if (result?.error) { setError("Sign-in failed — try again.") }
+      else { router.push(role === "researcher" ? "/clinic" : "/patient") }
+    } catch { setError("Network error — try again.") }
+    setLoading(false)
+  }
+
+  async function login() {
+    setLoading(true); setError("")
+    try {
+      const result = await signIn("credentials", { email: lEmail, password: lPw, redirect: false })
+      if (result?.error) { setError("Incorrect email or password."); setLoading(false); return }
+      // Detect role from profile
+      const res = await fetch("/api/patient/profile")
+      if (res.ok) {
+        const u = await res.json()
+        router.push(u.role === "researcher" ? "/clinic" : "/patient")
+      } else {
+        router.push("/patient")
       }
-    } catch {
-      setError("Network error — please try again")
-      setLoading(false)
-      return
-    }
-
-    // Auto sign-in after registration
-    const result = await signIn("credentials", { email, password, redirect: false })
+    } catch { setError("Network error — try again.") }
     setLoading(false)
-    if (result?.error) {
-      setError("Registered but sign-in failed. Try logging in.")
-    } else {
-      router.push(role === "researcher" ? "/clinic" : "/patient")
-    }
   }
 
-  async function handleLogin() {
-    setLoading(true)
-    setError("")
-    const result = await signIn("credentials", { email: loginEmail, password: loginPassword, redirect: false })
-    setLoading(false)
-    if (result?.error) {
-      setError("Invalid email or password. Check your credentials and try again.")
-    } else {
-      // Use the demo account email to decide routing; real accounts use session role from next redirect
-      const clinicDomains = ["researcher", "clinic", "hospital", "doctor", "md."]
-      const isClinic = clinicDomains.some(d => loginEmail.toLowerCase().includes(d)) ||
-                       loginEmail === "researcher@demo.com"
-      router.push(isClinic ? "/clinic" : "/patient")
-    }
-  }
-
-  const inputCls = "w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-400 outline-none text-gray-900 text-sm transition-colors"
-  const labelCls = "block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide"
+  const inp = (accent: string) =>
+    `w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-${accent}-400 outline-none text-gray-900 text-sm bg-white`
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-indigo-50 flex flex-col items-center justify-center px-4 py-10">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-rose-50 flex flex-col items-center justify-center px-4 py-8">
       <AnimatePresence mode="wait">
 
-        {/* ── Role Selector ── */}
+        {/* ── Role selector ── */}
         {step === "role" && (
-          <motion.div key="role" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -24 }} transition={{ duration: 0.4 }} className="w-full max-w-lg">
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-rose-100 rounded-2xl mb-5 shadow-sm">
+          <motion.div key="role" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -24 }} transition={{ duration: 0.4 }} className="w-full max-w-lg">
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-rose-100 rounded-2xl mb-6 shadow-sm">
                 <Activity className="w-8 h-8 text-rose-500" />
               </div>
-              <h1 className="text-4xl font-bold tracking-tight text-gray-900 mb-3">markovHealth</h1>
+              <h1 className="text-4xl font-semibold tracking-tight text-gray-900 mb-3">markovHealth</h1>
               <p className="text-gray-500 text-base leading-relaxed max-w-sm mx-auto">
-                We screen you for clinical trials — then bring the trial <em>to you</em>. Kits by mail. Travel coordinated. Zero logistics on your end.
+                We screen patients for clinical trials and bring the trial to <em>them</em>.
+                Kits by mail. Travel coordinated. Zero logistics on your end.
               </p>
             </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-2 gap-4 mb-4">
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  setStep("patient_register")
-                  if (!displayName) setDisplayName("Sarah Jenkins")
-                }}
-                className="flex flex-col items-center gap-3 p-6 bg-white border border-rose-100 hover:border-rose-300 rounded-2xl shadow-sm transition-all group"
-              >
+                onClick={() => setStep("patient")}
+                className="flex flex-col items-center gap-3 p-6 bg-white border border-rose-100 hover:border-rose-300 rounded-2xl shadow-sm transition-colors group">
                 <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center group-hover:bg-rose-100 transition-colors">
                   <User className="w-5 h-5 text-rose-500" />
                 </div>
-                <div className="text-center">
-                  <p className="font-semibold text-gray-900">I am a Patient</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Find trials, get matched</p>
-                </div>
+                <p className="font-medium text-gray-900">I am a Patient</p>
+                <p className="text-xs text-gray-400">Create new account</p>
               </motion.button>
-
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  setStep("clinic_register")
-                  if (!orgName) setOrgName("Memorial Sloan Kettering")
-                }}
-                className="flex flex-col items-center gap-3 p-6 bg-white border border-rose-100 hover:border-indigo-300 rounded-2xl shadow-sm transition-all group"
-              >
+                onClick={() => setStep("clinic")}
+                className="flex flex-col items-center gap-3 p-6 bg-white border border-rose-100 hover:border-indigo-300 rounded-2xl shadow-sm transition-colors group">
                 <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                  <Map className="w-5 h-5 text-indigo-500" />
+                  <Building2 className="w-5 h-5 text-indigo-500" />
                 </div>
-                <div className="text-center">
-                  <p className="font-semibold text-gray-900">I am a Clinician</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Upload trials, find patients</p>
-                </div>
+                <p className="font-medium text-gray-900">I am a Clinician</p>
+                <p className="text-xs text-gray-400">Create new account</p>
               </motion.button>
             </div>
-
-            <button onClick={() => setStep("login")} className="w-full py-2.5 text-sm font-medium text-gray-500 hover:text-rose-600 transition-colors border border-gray-100 rounded-xl bg-white hover:border-rose-100">
-              Already have an account? Sign in →
+            <button onClick={() => setStep("login")}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-gray-200 bg-white hover:bg-gray-50 text-sm font-medium text-gray-600 transition-colors shadow-sm mb-6">
+              <LogIn className="w-4 h-4" />Already have an account? Sign in
             </button>
-
-            <div className="mt-6 space-y-2">
-              <div className="bg-white rounded-2xl p-4 border border-rose-50 shadow-sm flex items-start gap-3">
-                <ShieldCheck className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+            <div className="space-y-3">
+              <div className="bg-white rounded-2xl p-4 border border-rose-100 shadow-sm flex items-start gap-3">
+                <ShieldCheck className="w-6 h-6 text-emerald-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">Zero-Knowledge Security</p>
-                  <p className="text-xs text-gray-400 mt-0.5">PHI stripped before any AI sees your data.</p>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-0.5">Zero-Knowledge Security</h3>
+                  <p className="text-xs text-gray-500">PHI stripped before any AI sees your data. Staff have zero access to raw records.</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-4 border border-indigo-100 shadow-sm flex items-start gap-3">
+                <Activity className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-0.5">We Handle Every Logistic</h3>
+                  <p className="text-xs text-gray-500">Kits shipped to your door. Travel coordinated. Mobile units dispatched to your region.</p>
                 </div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* ── Patient Registration ── */}
-        {step === "patient_register" && (
-          <motion.div key="patient_register" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }}
-            className="w-full max-w-lg bg-white p-8 rounded-3xl shadow-sm border border-rose-100"
-          >
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Create Patient Account</h2>
-            <p className="text-gray-400 text-sm mb-6">Your story matters as much as your medical records. All data is encrypted.</p>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Full Name</label>
-                  <input value={displayName} onChange={e => setDisplayName(e.target.value)} className={inputCls} placeholder="Sarah Jenkins" />
-                </div>
-                <div>
-                  <label className={labelCls}>Age</label>
-                  <input value={age} onChange={e => setAge(e.target.value)} type="number" className={inputCls} placeholder="52" />
-                </div>
-              </div>
-
-              <div>
-                <label className={labelCls}><Mail className="w-3 h-3 inline mr-1" />Email (your username)</label>
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" className={inputCls} placeholder="you@example.com" />
-              </div>
-
-              <div>
-                <label className={labelCls}><Phone className="w-3 h-3 inline mr-1" />Phone (for coordinator contact)</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" className={inputCls} placeholder="(555) 000-0000" />
-              </div>
-
-              <div>
-                <label className={labelCls}><Home className="w-3 h-3 inline mr-1" />Full Mailing Address (for test kit shipping)</label>
-                <input value={address} onChange={e => setAddress(e.target.value)} className={inputCls} placeholder="123 Elm St, Ithaca, NY 14850" />
-              </div>
-
-              <div>
-                <label className={labelCls}><Lock className="w-3 h-3 inline mr-1" />My Story (encrypted before transmission)</label>
-                <textarea value={story} onChange={e => setStory(e.target.value)} className={`${inputCls} h-20 resize-none`} placeholder="Tell us about your diagnosis, your goals, and what care means to you. This helps clinicians understand your journey..." />
-              </div>
-
-              <div>
-                <label className={labelCls}>Create Password</label>
-                <div className="relative">
-                  <input value={password} onChange={e => setPassword(e.target.value)} type={showPw ? "text" : "password"} className={`${inputCls} pr-10`} placeholder="Min. 6 characters" />
-                  <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-
-              <button disabled={loading || !email || !password || !displayName} onClick={() => handleRegister("patient")}
-                className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-60"
-              >
-                {loading ? <Activity className="w-4 h-4 animate-spin" /> : null}
-                {loading ? "Creating account..." : <><span>Join Network (Secure)</span><ArrowRight className="w-4 h-4" /></>}
-              </button>
-
-              <button onClick={() => setStep("login")} className="w-full py-2 text-sm text-gray-400 hover:text-gray-700 transition-colors">
-                Already have an account? Log in
-              </button>
-              <button onClick={() => setStep("role")} className="w-full py-1 text-xs text-gray-300 hover:text-gray-500 transition-colors">← Back</button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Clinician Registration ── */}
-        {step === "clinic_register" && (
-          <motion.div key="clinic_register" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }}
-            className="w-full max-w-lg bg-white p-8 rounded-3xl shadow-sm border border-indigo-100"
-          >
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Clinician Registration</h2>
-            <p className="text-gray-400 text-sm mb-6">Create your verified researcher account. All clinicians are reviewed by our team.</p>
-
-            <div className="space-y-4">
-              <div>
-                <label className={labelCls}>Organization Name</label>
-                <input value={orgName} onChange={e => setOrgName(e.target.value)} className={inputCls} placeholder="Memorial Sloan Kettering" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelCls}>Specialty</label>
-                  <input value={specialty} onChange={e => setSpecialty(e.target.value)} className={inputCls} placeholder="Oncology" />
-                </div>
-                <div>
-                  <label className={labelCls}>NPI Number</label>
-                  <input value={npi} onChange={e => setNpi(e.target.value)} className={inputCls} placeholder="1234567890" />
-                </div>
-              </div>
-
-              <div>
-                <label className={labelCls}><Mail className="w-3 h-3 inline mr-1" />Contact Email (shown to matched patients)</label>
-                <input value={email} onChange={e => setEmail(e.target.value)} type="email" className={inputCls} placeholder="you@hospital.org" />
-              </div>
-
-              <div>
-                <label className={labelCls}><Phone className="w-3 h-3 inline mr-1" />Direct Phone (shown to matched patients)</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} type="tel" className={inputCls} placeholder="(212) 000-0000" />
-              </div>
-
-              <div>
-                <label className={labelCls}>Create Password</label>
-                <div className="relative">
-                  <input value={password} onChange={e => setPassword(e.target.value)} type={showPw ? "text" : "password"} className={`${inputCls} pr-10`} placeholder="Min. 6 characters" />
-                  <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
-
-              <button disabled={loading || !email || !password || !orgName} onClick={() => handleRegister("researcher")}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-60"
-              >
-                {loading ? <Activity className="w-4 h-4 animate-spin" /> : null}
-                {loading ? "Creating account..." : <><ShieldCheck className="w-4 h-4" /><span>Create Clinician Account</span></>}
-              </button>
-
-              <button onClick={() => setStep("login")} className="w-full py-2 text-sm text-gray-400 hover:text-gray-700 transition-colors">
-                Already verified? Log in
-              </button>
-              <button onClick={() => setStep("role")} className="w-full py-1 text-xs text-gray-300 hover:text-gray-500">← Back</button>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ── Login ── */}
+        {/* ── Sign in ── */}
         {step === "login" && (
-          <motion.div key="login" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-            className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-sm border border-gray-100"
-          >
-            <div className="flex justify-center mb-5">
-              <div className="w-12 h-12 bg-gray-100 rounded-2xl flex items-center justify-center">
-                <Lock className="w-6 h-6 text-gray-400" />
-              </div>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-1 text-center">Welcome back</h2>
-            <p className="text-gray-400 text-sm mb-6 text-center">Sign in to markovHealth</p>
-
-            {/* Demo account hints */}
-            <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 mb-5 space-y-1">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Demo Accounts</p>
-              <button onClick={() => { setLoginEmail("patient@demo.com"); setLoginPassword("demo1234") }}
-                className="w-full text-left text-xs text-gray-600 hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors font-mono"
-              >
-                patient@demo.com / demo1234 → Patient view
-              </button>
-              <button onClick={() => { setLoginEmail("researcher@demo.com"); setLoginPassword("demo1234") }}
-                className="w-full text-left text-xs text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded-lg transition-colors font-mono"
-              >
-                researcher@demo.com / demo1234 → Clinician view
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className={labelCls}>Email</label>
-                <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className={inputCls} placeholder="you@example.com" />
+          <motion.div key="login" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            className="w-full max-w-md bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+                <LogIn className="w-5 h-5 text-gray-600" />
               </div>
               <div>
-                <label className={labelCls}>Password</label>
-                <div className="relative">
-                  <input type={showPw ? "text" : "password"} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className={`${inputCls} pr-10`} placeholder="••••••••" />
-                  <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-2.5 text-gray-400">
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                <h2 className="text-xl font-semibold text-gray-900">Sign in</h2>
+                <p className="text-gray-400 text-xs">Welcome back</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input value={lEmail} onChange={e => setLEmail(e.target.value)} type="email"
+                  className={inp("gray")} placeholder="you@example.com"
+                  onKeyDown={e => e.key === "Enter" && login()} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
+                <input value={lPw} onChange={e => setLPw(e.target.value)} type="password"
+                  className={inp("gray")} placeholder="••••••••"
+                  onKeyDown={e => e.key === "Enter" && login()} />
+              </div>
+              <button disabled={loading || !lEmail || !lPw}
+                onClick={login}
+                className="w-full py-3 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white font-medium rounded-xl flex items-center justify-center gap-2 mt-2 transition-colors shadow-sm">
+                {loading
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />Signing in...</>
+                  : <><ArrowRight className="w-4 h-4" />Sign in</>}
+              </button>
+              {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+              <button onClick={() => { setStep("role"); setError("") }}
+                className="w-full text-gray-400 hover:text-gray-600 text-sm py-1">Back</button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Patient signup ── */}
+        {step === "patient" && (
+          <motion.div key="patient" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            className="w-full max-w-lg bg-white p-8 rounded-3xl shadow-sm border border-rose-100">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-1">Create your patient account</h2>
+            <p className="text-gray-500 mb-6 text-sm">Your story matters as much as your medical records.</p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Full Name</label>
+                  <input value={pName} onChange={e => setPName(e.target.value)} className={inp("rose")} placeholder="Bob Chen" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Age</label>
+                  <input value={pAge} onChange={e => setPAge(e.target.value)} type="number" className={inp("rose")} placeholder="52" />
                 </div>
               </div>
-
-              {error && <p className="text-red-500 text-sm font-medium text-center">{error}</p>}
-
-              <button disabled={loading || !loginEmail || !loginPassword} onClick={handleLogin}
-                className="w-full py-2.5 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl transition-colors shadow-sm disabled:opacity-60 flex items-center justify-center gap-2"
-              >
-                {loading ? <Activity className="w-4 h-4 animate-spin" /> : null}
-                {loading ? "Signing in..." : "Sign In"}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input value={pEmail} onChange={e => setPEmail(e.target.value)} type="email" className={inp("rose")} placeholder="bob@example.com" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
+                  <input value={pPw} onChange={e => setPPw(e.target.value)} type="password" className={inp("rose")} placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                  <input value={pPhone} onChange={e => setPPhone(e.target.value)} className={inp("rose")} placeholder="(607) 555-0100" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Zip Code (for kit shipping)</label>
+                <input value={pZip} onChange={e => setPZip(e.target.value)} className={inp("rose")} placeholder="14850" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+                  Your Story <Lock className="w-3 h-3 text-emerald-500" />
+                </label>
+                <textarea value={pStory} onChange={e => setPStory(e.target.value)}
+                  className={`${inp("rose")} h-24 resize-none`}
+                  placeholder="Tell us about yourself. This helps coordinators see you as a person, not a data point." />
+              </div>
+              <button disabled={loading || !pName || !pEmail || !pPw}
+                onClick={() => registerAndLogin("patient")}
+                className="w-full py-3 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-medium rounded-xl flex items-center justify-center gap-2 mt-2 transition-colors shadow-sm">
+                {loading
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />Creating account...</>
+                  : <><ArrowRight className="w-4 h-4" />Join as Patient</>}
               </button>
-              <button onClick={() => setStep("role")} className="w-full py-2 text-sm text-gray-400 hover:text-gray-700">← Back to options</button>
+              {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+              <div className="flex items-center justify-between">
+                <button onClick={() => { setStep("role"); setError("") }} className="text-gray-400 hover:text-gray-600 text-sm py-1">Back</button>
+                <button onClick={() => { setStep("login"); setError("") }} className="text-indigo-500 hover:text-indigo-700 text-sm py-1">Already have an account?</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Clinic signup ── */}
+        {step === "clinic" && (
+          <motion.div key="clinic" initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -50 }}
+            className="w-full max-w-lg bg-white p-8 rounded-3xl shadow-sm border border-indigo-100">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-1">Create your clinic account</h2>
+            <p className="text-gray-500 mb-6 text-sm">Upload trial protocols and we&apos;ll route eligible patients to you.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Your Name</label>
+                <input value={cName} onChange={e => setCName(e.target.value)} className={inp("indigo")} placeholder="Dr. Emily Chen" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Organization</label>
+                <input value={cOrg} onChange={e => setCOrg(e.target.value)} className={inp("indigo")} placeholder="Memorial Sloan Kettering" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Specialty</label>
+                  <input value={cSpecialty} onChange={e => setCSpecialty(e.target.value)} className={inp("indigo")} placeholder="Oncology" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Location</label>
+                  <input value={cLocation} onChange={e => setCLocation(e.target.value)} className={inp("indigo")} placeholder="New York, NY" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                <input value={cEmail} onChange={e => setCEmail(e.target.value)} type="email" className={inp("indigo")} placeholder="dr.chen@mskcc.org" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
+                  <input value={cPw} onChange={e => setCPw(e.target.value)} type="password" className={inp("indigo")} placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Direct Phone</label>
+                  <input value={cPhone} onChange={e => setCPhone(e.target.value)} className={inp("indigo")} placeholder="(212) 639-5710" />
+                </div>
+              </div>
+              <button disabled={loading || !cName || !cEmail || !cPw || !cOrg}
+                onClick={() => registerAndLogin("researcher")}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium rounded-xl flex items-center justify-center gap-2 mt-2 transition-colors shadow-sm">
+                {loading
+                  ? <><Loader2 className="w-4 h-4 animate-spin" />Creating account...</>
+                  : <><ShieldCheck className="w-4 h-4" />Create Clinic Account</>}
+              </button>
+              {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+              <div className="flex items-center justify-between">
+                <button onClick={() => { setStep("role"); setError("") }} className="text-gray-400 hover:text-gray-600 text-sm py-1">Back</button>
+                <button onClick={() => { setStep("login"); setError("") }} className="text-indigo-500 hover:text-indigo-700 text-sm py-1">Already have an account?</button>
+              </div>
             </div>
           </motion.div>
         )}

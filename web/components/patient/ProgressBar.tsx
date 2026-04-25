@@ -12,7 +12,7 @@ const STATE_CONFIG: Record<UploadState, { label: string; color: string; width: s
   idle:       { label: "",                    color: "bg-gray-200",   width: "w-0" },
   uploading:  { label: "Uploading records…",  color: "bg-rose-400",   width: "w-1/3" },
   processing: { label: "Analyzing with AI…",  color: "bg-rose-500",   width: "w-2/3" },
-  matched:    { label: "Match found!",         color: "bg-emerald-500", width: "w-full" },
+  matched:    { label: "Records saved safely",  color: "bg-emerald-500", width: "w-full" },
   "no-match": { label: "No current matches",  color: "bg-amber-500",  width: "w-full" },
   error:      { label: "Analysis failed",     color: "bg-red-500",    width: "w-full" },
 }

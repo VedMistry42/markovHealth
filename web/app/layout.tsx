@@ -6,7 +6,7 @@ import Providers from "./providers"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Axiom — Clinical Trial Access Platform",
+  title: "markovHealth — Clinical Trial Access Platform",
   description: "Decentralizing clinical trial recruitment through automated pre-screening and intelligent routing.",
 }
 

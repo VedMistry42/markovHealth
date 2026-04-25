@@ -1,0 +1,14 @@
+CLINICAL TRIAL PROTOCOL
+Trial ID: ONCO-KRAS-502
+Title: A Phase 3 Study of Next-Generation KRAS Inhibitor in Advanced NSCLC
+Inclusion Criteria:
+- Histologically confirmed Stage IV NSCLC.
+- Documented KRAS G12C mutation.
+- Progression on or after platinum-based chemotherapy and PD-1/PD-L1 inhibitor.
+- Measurable disease by RECIST 1.1.
+Exclusion Criteria:
+- Untreated CNS metastases.
+- Active second malignancy.
+Logistics Support:
+This trial implements the MarkovHealth logistics engine. Patients are eligible for at-home genomic testing and mobile clinical unit visits for monthly assessments.
+Contact: Dr. Alistair Vance, Lead Investigator

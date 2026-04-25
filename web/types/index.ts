@@ -2,7 +2,7 @@ import { z } from "zod"
 
 export const MatchRequestSchema = z.object({
   patientId: z.string().min(1),
-  deidentifiedSummary: z.string().min(10).max(8000),
+  deidentifiedSummary: z.string().min(1).max(10000),
   trialId: z.string().default("trial-onco-001"),
   coords: z.object({
     lat: z.number(),
